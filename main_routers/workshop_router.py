@@ -4291,6 +4291,8 @@ async def sync_workshop_character_cards() -> dict:
             deleted_character_names = _load_deleted_character_names(config_mgr)
             
             need_save = False
+            pending_added_catgirls = {}
+            pending_card_face_writes = {}
             
             # 2. 遍历所有已安装的物品
             for item in subscribed_items:
@@ -4338,6 +4340,16 @@ async def sync_workshop_character_cards() -> dict:
                             # 已存在则跳过（当前设计：仅填充缺失角色卡，不覆盖已有数据；
                             # 如需支持创意工坊更新覆写本地数据，可添加 allow_workshop_overwrite 配置项）
                             if chara_name in characters['猫娘']:
+                                if chara_name in pending_added_catgirls:
+                                    # 同一次扫描内的重复同名卡仍处于待合并状态，不能按已存在角色补写封面；
+                                    # 最终是否导入要等保存前用最新版 characters.json 再判定。
+                                    skipped_count += 1
+                                    logger.info(
+                                        "sync_workshop_character_cards: 跳过重复待添加角色 '%s'（物品 %s）",
+                                        chara_name,
+                                        item_id,
+                                    )
+                                    continue
                                 existing_data = characters['猫娘'].get(chara_name) or {}
                                 if _is_matching_workshop_character(existing_data, item_id):
                                     try:
@@ -4456,50 +4468,14 @@ async def sync_workshop_character_cards() -> dict:
                                     set_reserved(catgirl_data, 'avatar', 'mmd', 'model_path', subscriber_model_ref)
                             
                             characters['猫娘'][chara_name] = catgirl_data
+                            pending_added_catgirls[chara_name] = catgirl_data
+                            pending_card_face_writes[chara_name] = {
+                                'preview_image_path': preview_image_path,
+                                'item': item,
+                            }
                             need_save = True
                             added_count += 1
-                            logger.info(f"sync_workshop_character_cards: 添加角色卡 '{chara_name}' (来自物品 {item_id})")
-
-                            # 同步生成本地卡面和 sidecar，前端封面只认 card_faces/{name}.png
-                            try:
-                                blocked_result = _abort_if_write_fence_active(
-                                    f"sync_workshop_character_cards: 生成角色卡封面前检测到维护态写围栏，跳过本轮同步并等待后续重试（角色 {chara_name}，物品 {item_id}）"
-                                )
-                                if blocked_result is not None:
-                                    return blocked_result
-                                face_created = await asyncio.to_thread(
-                                    _ensure_workshop_card_face_from_preview,
-                                    config_mgr,
-                                    chara_name,
-                                    preview_image_path,
-                                    item,
-                                )
-                                if face_created:
-                                    logger.info(
-                                        "sync_workshop_character_cards: 已生成角色卡封面 '%s' (来自物品 %s)",
-                                        chara_name,
-                                        item_id,
-                                    )
-                                elif item:
-                                    blocked_result = _abort_if_write_fence_active(
-                                        f"sync_workshop_character_cards: 补写角色卡封面元数据前检测到维护态写围栏，跳过本轮同步并等待后续重试（角色 {chara_name}，物品 {item_id}）"
-                                    )
-                                    if blocked_result is not None:
-                                        return blocked_result
-                                    await asyncio.to_thread(
-                                        _ensure_workshop_card_face_meta,
-                                        config_mgr,
-                                        chara_name,
-                                        item,
-                                    )
-                            except Exception as face_meta_err:
-                                error_count += 1
-                                logger.warning(
-                                    "sync_workshop_character_cards: 补写角色卡封面或元数据失败 %s (物品 %s): %s",
-                                    chara_name,
-                                    item_id,
-                                    face_meta_err,
-                                )
+                            logger.info(f"sync_workshop_character_cards: 发现待添加角色卡 '{chara_name}' (来自物品 {item_id})")
                             
                         except Exception as e:
                             logger.warning(f"sync_workshop_character_cards: 处理文件 {chara_file_path} 失败: {e}")
@@ -4517,13 +4493,115 @@ async def sync_workshop_character_cards() -> dict:
                 if blocked_result is not None:
                     return blocked_result
 
-                try:
-                    await config_mgr.asave_characters(characters)
-                except MaintenanceModeError:
-                    logger.info("sync_workshop_character_cards: 保存时进入维护态写围栏，跳过本轮同步并等待后续重试")
-                    return _write_fence_blocked_result()
+                characters_to_save = characters
+                actually_added_names = []
+                if pending_added_catgirls:
+                    # 启动期工坊同步是后台任务：扫描可能很慢，期间用户可能已经修改了角色卡
+                    # 或完成初始人格选择。保存前必须重新读取最新配置，只把本轮新增角色合入，
+                    # 避免用扫描前的旧快照整包覆盖用户刚写入的字段。
+                    latest_characters = await config_mgr.aload_characters()
+                    if not isinstance(latest_characters, dict):
+                        logger.warning(
+                            "sync_workshop_character_cards: 保存前检测到 characters.json 根对象结构无效（%s），取消本轮同步保存",
+                            type(latest_characters).__name__,
+                        )
+                        added_count = 0
+                        error_count += 1
+                        return {
+                            "added": added_count,
+                            "backfilled_faces": backfilled_face_count,
+                            "skipped": skipped_count,
+                            "errors": error_count,
+                        }
+                    latest_catgirls = latest_characters.get('猫娘')
+                    if not isinstance(latest_catgirls, dict):
+                        logger.warning(
+                            "sync_workshop_character_cards: 保存前检测到 characters.json 猫娘字段结构无效（%s），取消本轮同步保存",
+                            type(latest_catgirls).__name__,
+                        )
+                        added_count = 0
+                        error_count += 1
+                        return {
+                            "added": added_count,
+                            "backfilled_faces": backfilled_face_count,
+                            "skipped": skipped_count,
+                            "errors": error_count,
+                        }
 
-                logger.info(f"sync_workshop_character_cards: 已保存，新增 {added_count} 个角色卡，回填 {backfilled_face_count} 个封面")
+                    latest_deleted_character_names = _load_deleted_character_names(config_mgr)
+                    actually_added_count = 0
+                    skipped_due_to_race_count = 0
+                    for pending_name, pending_payload in pending_added_catgirls.items():
+                        if pending_name in latest_deleted_character_names or pending_name in latest_catgirls:
+                            skipped_due_to_race_count += 1
+                            continue
+                        latest_catgirls[pending_name] = pending_payload
+                        actually_added_count += 1
+                        actually_added_names.append(pending_name)
+
+                    added_count = actually_added_count
+                    skipped_count += skipped_due_to_race_count
+                    if actually_added_count <= 0:
+                        need_save = False
+                    else:
+                        if not latest_characters.get('当前猫娘') and latest_catgirls:
+                            latest_characters['当前猫娘'] = next(iter(latest_catgirls), '')
+                        characters_to_save = latest_characters
+
+                if need_save:
+                    try:
+                        await config_mgr.asave_characters(characters_to_save)
+                    except MaintenanceModeError:
+                        logger.info("sync_workshop_character_cards: 保存时进入维护态写围栏，跳过本轮同步并等待后续重试")
+                        return _write_fence_blocked_result()
+
+                    logger.info(f"sync_workshop_character_cards: 已保存，新增 {added_count} 个角色卡，回填 {backfilled_face_count} 个封面")
+
+                    for added_name in actually_added_names:
+                        write_info = pending_card_face_writes.get(added_name) or {}
+                        write_item = write_info.get('item') if isinstance(write_info, dict) else None
+                        write_item_id = write_item.get('publishedFileId', '') if isinstance(write_item, dict) else ''
+                        if is_write_fence_active(config_mgr):
+                            logger.info(
+                                "sync_workshop_character_cards: 角色已保存，但维护态写围栏已开启，跳过角色卡封面生成（角色 %s）",
+                                added_name,
+                            )
+                            continue
+                        try:
+                            face_created = await asyncio.to_thread(
+                                _ensure_workshop_card_face_from_preview,
+                                config_mgr,
+                                added_name,
+                                write_info.get('preview_image_path') if isinstance(write_info, dict) else None,
+                                write_item,
+                            )
+                            if face_created:
+                                logger.info(
+                                    "sync_workshop_character_cards: 已生成角色卡封面 '%s' (来自物品 %s)",
+                                    added_name,
+                                    write_item_id,
+                                )
+                            elif write_item:
+                                if is_write_fence_active(config_mgr):
+                                    logger.info(
+                                        "sync_workshop_character_cards: 角色已保存，但维护态写围栏已开启，跳过角色卡封面元数据补写（角色 %s）",
+                                        added_name,
+                                    )
+                                    continue
+                                await asyncio.to_thread(
+                                    _ensure_workshop_card_face_meta,
+                                    config_mgr,
+                                    added_name,
+                                    write_item,
+                                )
+                        except Exception as face_meta_err:
+                            error_count += 1
+                            logger.warning(
+                                "sync_workshop_character_cards: 补写角色卡封面或元数据失败 %s (物品 %s): %s",
+                                added_name,
+                                write_item_id,
+                                face_meta_err,
+                            )
                 
                 try:
                     initialize_character_data = get_initialize_character_data()
