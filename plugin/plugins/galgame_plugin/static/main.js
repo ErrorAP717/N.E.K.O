@@ -5553,7 +5553,7 @@ function renderRapidOcrLangBar(rapidocr) {
     btn.classList.toggle('active', langType === lang);
     btn.setAttribute('aria-checked', langType === lang ? 'true' : 'false');
     btn.setAttribute('tabindex', langType === lang ? '0' : '-1');
-    btn.disabled = rapidOcrLangRequestPending;
+    btn.disabled = rapidOcrLangRequestPending || autoDetect;
   });
 
   const checkbox = document.getElementById('rapidocrAutoDetectCheck');
@@ -6701,7 +6701,14 @@ async function setRapidOcrLang(payload = {}) {
     if (nextPayload) {
       setRapidOcrLang(nextPayload);
     } else {
-      setRapidOcrLangControlsDisabled(false);
+      const checkbox = document.getElementById('rapidocrAutoDetectCheck');
+      const latestRapidOcr = latestStatus && latestStatus.rapidocr ? latestStatus.rapidocr : {};
+      const autoDetect = checkbox ? checkbox.checked : latestRapidOcr.auto_detect_lang !== false;
+      if (latestStatus && latestStatus.rapidocr) {
+        renderRapidOcrLangBar({ ...latestRapidOcr, auto_detect_lang: autoDetect });
+      } else if (!autoDetect && !rapidOcrLangRequestPending) {
+        setRapidOcrLangControlsDisabled(false);
+      }
     }
     if (saved && !nextPayload) {
       await refreshAll({ preserveFlash: true, forceInsights: true });
