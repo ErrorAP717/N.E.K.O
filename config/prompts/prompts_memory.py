@@ -2933,13 +2933,23 @@ RECALL_MEMORY_TOOL_DESCRIPTION = {
 }
 
 RECALL_MEMORY_TOOL_QUERY_DESCRIPTION = {
-    "zh": "要回忆的关键词、问题或话题。用一两句话简洁概括，例如\"上次提到的旅行计划\"或\"用户对咖啡的喜好\"。",
-    "en": "Keyword, question, or topic to recall. Keep it to a sentence or two, e.g. \"the travel plan mentioned earlier\" or \"the user's coffee preferences\".",
-    "ja": "思い出したいキーワード、質問、話題。一、二文で簡潔にまとめてください。例：「以前話した旅行計画」「ユーザーのコーヒーの好み」。",
-    "ko": "떠올리려는 키워드, 질문, 주제. 한두 문장으로 간결하게 적으세요. 예: \"이전에 언급한 여행 계획\", \"사용자의 커피 취향\".",
-    "ru": "Ключевое слово, вопрос или тема для воспоминания. Сформулируйте в одно-два предложения, например «упомянутый ранее план поездки» или «предпочтения пользователя в кофе».",
-    "es": "Palabra clave, pregunta o tema a recordar. Una o dos frases breves, p. ej. \"el plan de viaje mencionado antes\" o \"las preferencias de café del usuario\".",
-    "pt": "Palavra-chave, pergunta ou tópico a recordar. Uma ou duas frases curtas, p. ex. \"o plano de viagem mencionado antes\" ou \"as preferências de café do usuário\".",
+    "zh": "要回忆的关键词、问题或话题。用一两句话简洁概括，例如\"上次提到的旅行计划\"或\"用户对咖啡的喜好\"。query 和 time 至少提供一个：只想按时间回溯时可只填 time、留空 query。",
+    "en": "Keyword, question, or topic to recall. Keep it to a sentence or two, e.g. \"the travel plan mentioned earlier\" or \"the user's coffee preferences\". Provide at least one of query / time: for a pure time lookup you may fill only time and leave query empty.",
+    "ja": "思い出したいキーワード、質問、話題。一、二文で簡潔にまとめてください。例：「以前話した旅行計画」「ユーザーのコーヒーの好み」。query と time は少なくとも一方を指定：時間でさかのぼるだけなら time のみ指定し query は空でも可。",
+    "ko": "떠올리려는 키워드, 질문, 주제. 한두 문장으로 간결하게 적으세요. 예: \"이전에 언급한 여행 계획\", \"사용자의 커피 취향\". query와 time 중 최소 하나는 지정: 시간으로만 거슬러보려면 time만 채우고 query는 비워도 됩니다.",
+    "ru": "Ключевое слово, вопрос или тема для воспоминания. Сформулируйте в одно-два предложения, например «упомянутый ранее план поездки» или «предпочтения пользователя в кофе». Укажите хотя бы одно из query / time: для поиска только по времени можно заполнить только time и оставить query пустым.",
+    "es": "Palabra clave, pregunta o tema a recordar. Una o dos frases breves, p. ej. \"el plan de viaje mencionado antes\" o \"las preferencias de café del usuario\". Indica al menos uno de query / time: para una búsqueda solo por tiempo puedes rellenar solo time y dejar query vacío.",
+    "pt": "Palavra-chave, pergunta ou tópico a recordar. Uma ou duas frases curtas, p. ex. \"o plano de viagem mencionado antes\" ou \"as preferências de café do usuário\". Forneça ao menos um entre query / time: para uma busca só por tempo, preencha apenas time e deixe query vazio.",
+}
+
+RECALL_MEMORY_TOOL_TIME_DESCRIPTION = {
+    "zh": "可选。把检索限定在某个时间段。只填 time（不填 query）就返回离那段时间最近的若干条记忆（事实和印象都包含，适合\"那天/那周发生了什么\"）；同时填 query 则做\"语义+时间\"联合检索——在该时间段内按 query 语义找相关记忆（适合\"五月聊过的旅行计划\"）。支持整点小时 2026-05-01T14、单日 2026-05-01、整月 2026-05、整年 2026，或区间 2026-05-01/2026-05-07、2026-05-01T09/2026-05-01T18。不填则按 query 做全量语义检索。",
+    "en": "Optional. Restrict recall to a time period. With time only (no query) it returns the memories closest to that period (both facts and impressions — good for \"what happened that day/week\"). With both query and time it runs a combined \"semantic + time\" search — finds memories relevant to query within that period (good for \"the travel plan discussed in May\"). Accepts an hour 2026-05-01T14, a day 2026-05-01, a month 2026-05, a year 2026, or a range 2026-05-01/2026-05-07, 2026-05-01T09/2026-05-01T18. Leave empty for full semantic recall by query.",
+    "ja": "任意。検索をある期間に限定します。time だけ（query なし）なら、その期間に最も近い記憶（事実も印象も含む。「その日/その週に何があったか」向け）を返します。query と time の両方を指定すると「意味＋時間」の複合検索になり、その期間内で query に関連する記憶を探します（「5月に話した旅行計画」向け）。整点時 2026-05-01T14、単日 2026-05-01、月 2026-05、年 2026、または期間 2026-05-01/2026-05-07・2026-05-01T09/2026-05-01T18 に対応。空欄なら query による全件の意味検索になります。",
+    "ko": "선택. 검색을 특정 기간으로 제한합니다. time만 주면(query 없이) 그 기간에 가장 가까운 기억(사실과 인상 모두 포함, \"그날/그 주에 무슨 일이 있었나\"에 적합)을 반환합니다. query와 time을 함께 주면 \"의미+시간\" 결합 검색으로, 그 기간 안에서 query에 관련된 기억을 찾습니다(\"5월에 얘기한 여행 계획\"에 적합). 정시 단위 2026-05-01T14, 단일 날짜 2026-05-01, 월 2026-05, 연 2026, 또는 기간 2026-05-01/2026-05-07·2026-05-01T09/2026-05-01T18 지원. 비워두면 query 기반 전체 의미 검색.",
+    "ru": "Необязательно. Ограничивает поиск периодом времени. Если задан только time (без query), возвращает воспоминания, ближайшие к этому периоду (и факты, и впечатления — удобно для «что было в тот день/неделю»). Если заданы и query, и time, выполняется совмещённый поиск «семантика + время» — ищет воспоминания, релевантные query, в пределах периода (удобно для «план поездки, обсуждавшийся в мае»). Принимает час 2026-05-01T14, день 2026-05-01, месяц 2026-05, год 2026 или диапазон 2026-05-01/2026-05-07, 2026-05-01T09/2026-05-01T18. Оставьте пустым для полного семантического поиска по query.",
+    "es": "Opcional. Limita la búsqueda a un periodo. Con solo time (sin query) devuelve los recuerdos más cercanos a ese periodo (hechos e impresiones — útil para \"qué pasó ese día/semana\"). Con query y time juntos hace una búsqueda combinada \"semántica + tiempo\": encuentra recuerdos relevantes a query dentro de ese periodo (útil para \"el plan de viaje hablado en mayo\"). Acepta una hora 2026-05-01T14, un día 2026-05-01, un mes 2026-05, un año 2026 o un rango 2026-05-01/2026-05-07, 2026-05-01T09/2026-05-01T18. Déjalo vacío para la búsqueda semántica completa por query.",
+    "pt": "Opcional. Restringe a busca a um período. Com apenas time (sem query) retorna as memórias mais próximas daquele período (fatos e impressões — útil para \"o que aconteceu naquele dia/semana\"). Com query e time juntos faz uma busca combinada \"semântica + tempo\": encontra memórias relevantes para query dentro do período (útil para \"o plano de viagem conversado em maio\"). Aceita uma hora 2026-05-01T14, um dia 2026-05-01, um mês 2026-05, um ano 2026 ou um intervalo 2026-05-01/2026-05-07, 2026-05-01T09/2026-05-01T18. Deixe vazio para a busca semântica completa por query.",
 }
 
 RECALL_MEMORY_TOOL_NO_RESULT = {
@@ -2953,8 +2963,9 @@ RECALL_MEMORY_TOOL_NO_RESULT = {
 }
 
 # 召回到 N 条记忆时的总览首句；后面接渲染条目，每条按
-# ``[tier/entity] text  (created_at)`` 格式（tier/entity 是英文 enum，
-# 不翻译；text 是原始记忆内容，按用户拍板"不翻译"）。
+# ``[tier/entity] text  (事件日期, 相对标签)`` 格式（tier/entity 是英文
+# enum，不翻译；text 是原始记忆内容，按用户拍板"不翻译"；时间锚点优先
+# 取事件真正发生时间而非记忆写盘时间）。
 RECALL_MEMORY_TOOL_FOUND_HEADER = {
     "zh": "找到 {n} 条相关记忆：",
     "en": "Found {n} relevant memories:",
