@@ -1151,7 +1151,8 @@
                             const nativeReady = !captureReady
                                 && typeof window.computerUseNativeCaptureAvailable === 'function'
                                 && await window.computerUseNativeCaptureAvailable();
-                            if ((!captureReady && !nativeReady) || isExpired()) {
+                            if (isExpired()) return;
+                            if (!captureReady && !nativeReady) {
                                 if (typeof window.releaseComputerUseCapture === 'function') {
                                     window.releaseComputerUseCapture();
                                 }

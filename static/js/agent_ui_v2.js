@@ -596,6 +596,10 @@
                                     : 'Share the entire screen before enabling keyboard control');
                             }
                         }
+                        // A character switch can complete while capture permission
+                        // is pending. The switch owns the new UI state and capture
+                        // lifecycle, so the stale operation must not send or release.
+                        if (!isSnapshotTokenCurrent(opToken)) return;
                         await sendCommand('set_flag', { key, value });
                         if (!isSnapshotTokenCurrent(opToken)) return;
                         const ts = performance.now();
@@ -703,6 +707,9 @@
         state.snapshotGeneration += 1;
         state.expectedCharacter = currentLanlanName();
         const resetToken = makeSnapshotToken();
+        if (typeof window.releaseComputerUseCapture === 'function') {
+            window.releaseComputerUseCapture();
+        }
         applyLocalAgentOff('character-switch-local');
         try {
             const snapshot = await fetchSnapshotRaw();

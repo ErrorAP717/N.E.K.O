@@ -53,11 +53,13 @@
     let _jukeboxControlQueue = Promise.resolve();
     let _computerUseStream = null;
     let _computerUseStreamPending = null;
+    let _computerUseDisplayRequestPending = null;
     let _computerUseStreamGeneration = 0;
     let _computerUseStreamOwnerToken = null;
     let _computerUseCaptureFailure = '';
     let _agentTaskReconcileTimer = null;
     let _agentTaskReconcileInFlight = false;
+    const _agentTaskMissingCounts = new Map();
 
     function scheduleAgentTaskReconciliation() {
         if (_agentTaskReconcileTimer || !window._agentTaskMap) return;
@@ -89,9 +91,27 @@
                 }).map(function (task) { return [task.id, task]; }));
                 var changed = false;
                 taskMap.forEach(function (task, id) {
-                    if (task.status !== 'running' && task.status !== 'queued') return;
+                    if (task.status !== 'running' && task.status !== 'queued') {
+                        _agentTaskMissingCounts.delete(id);
+                        return;
+                    }
                     var current = serverTasks.get(id);
-                    if (!current || ['completed', 'failed', 'cancelled'].indexOf(current.status) === -1) return;
+                    if (!current) {
+                        // The server is authoritative. Allow one successful
+                        // poll for registration races, then retire a task whose
+                        // terminal event and retained record were both missed.
+                        var misses = (_agentTaskMissingCounts.get(id) || 0) + 1;
+                        if (misses >= 2) {
+                            taskMap.delete(id);
+                            _agentTaskMissingCounts.delete(id);
+                            changed = true;
+                        } else {
+                            _agentTaskMissingCounts.set(id, misses);
+                        }
+                        return;
+                    }
+                    _agentTaskMissingCounts.delete(id);
+                    if (['completed', 'failed', 'cancelled'].indexOf(current.status) === -1) return;
                     var terminalAt = Date.now();
                     taskMap.set(id, Object.assign({}, task, current, { terminal_at: terminalAt }));
                     changed = true;
@@ -115,6 +135,9 @@
                         }
                         window._agentTaskRemoveTimers.delete(id);
                     }, 10000));
+                });
+                _agentTaskMissingCounts.forEach(function (_count, id) {
+                    if (!taskMap.has(id)) _agentTaskMissingCounts.delete(id);
                 });
                 if (changed && window.AgentHUD && typeof window.AgentHUD.updateAgentTaskHUD === 'function') {
                     var tasks = Array.from(taskMap.values());
@@ -211,6 +234,12 @@
             return Promise.resolve(true);
         }
         if (_computerUseStreamPending) return _computerUseStreamPending;
+        // The UI timeout cannot cancel Chromium's chooser. Wait for that
+        // request to settle before allowing another system permission prompt.
+        if (_computerUseDisplayRequestPending) {
+            _computerUseCaptureFailure = 'display_media_pending';
+            return Promise.resolve(false);
+        }
 
         var generation = _computerUseStreamGeneration;
         // Invoke getDisplayMedia before any await: transient user activation
@@ -225,6 +254,13 @@
             _computerUseCaptureFailure = 'display_media_request_failed';
             return Promise.resolve(false);
         }
+        var displayRequest = Promise.resolve(request);
+        _computerUseDisplayRequestPending = displayRequest;
+        displayRequest.then(function () {
+            if (_computerUseDisplayRequestPending === displayRequest) _computerUseDisplayRequestPending = null;
+        }, function () {
+            if (_computerUseDisplayRequestPending === displayRequest) _computerUseDisplayRequestPending = null;
+        });
         // Chromium may leave getDisplayMedia pending without showing a portal
         // chooser. Settle the UI, and stop any stream delivered after timeout.
         var requestTimedOut = false;
@@ -233,7 +269,7 @@
                 requestTimedOut = true;
                 resolve(null);
             }, 5000);
-            Promise.resolve(request).then(function (stream) {
+            displayRequest.then(function (stream) {
                 if (requestTimedOut) {
                     stream.getTracks().forEach(function (track) { track.stop(); });
                     return;
@@ -269,7 +305,13 @@
             }
             if (typeof provider.setComputerUseStreamOwner === 'function') {
                 var ownerToken = String(generation) + ':' + Date.now();
-                var ownership = await provider.setComputerUseStreamOwner(true, ownerToken);
+                var ownership;
+                try {
+                    ownership = await provider.setComputerUseStreamOwner(true, ownerToken);
+                } catch (error) {
+                    stream.getTracks().forEach(function (item) { item.stop(); });
+                    throw error;
+                }
                 if (!ownership || ownership.success !== true || generation !== _computerUseStreamGeneration) {
                     provider.setComputerUseStreamOwner(false, ownerToken).catch(function () {});
                     _computerUseCaptureFailure = 'screen_stream_owner_unavailable';

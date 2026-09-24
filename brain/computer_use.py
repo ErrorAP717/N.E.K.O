@@ -91,15 +91,46 @@ def _pyautogui_unavailable_reason() -> str:
 _load_pyautogui()
 
 
-def _capture_computer_use_frame() -> Image.Image:
+def _post_capture_bridge(cancel_event: threading.Event | None) -> httpx.Response:
+    def post() -> httpx.Response:
+        timeout = httpx.Timeout(28.0, connect=1.0)
+        with httpx.Client(timeout=timeout, proxy=None, trust_env=False) as client:
+            return client.post(f"http://127.0.0.1:{MAIN_SERVER_PORT}/api/capture/computer-use")
+
+    if cancel_event is None:
+        return post()
+
+    result: dict[str, Any] = {}
+    finished = threading.Event()
+
+    def run_post() -> None:
+        try:
+            result["response"] = post()
+        except Exception as exc:
+            result["error"] = exc
+        finally:
+            finished.set()
+
+    # HTTPX's read timeout is an idle timeout, so a stalled bridge must not
+    # hold the Agent's cancellation path until the HTTP request completes.
+    threading.Thread(target=run_post, daemon=True).start()
+    while not finished.wait(0.05):
+        if cancel_event.is_set():
+            raise InterruptedError("Task cancelled by user")
+    if cancel_event.is_set():
+        raise InterruptedError("Task cancelled by user")
+    if "error" in result:
+        raise result["error"]
+    return result["response"]
+
+
+def _capture_computer_use_frame(cancel_event: threading.Event | None = None) -> Image.Image:
     """Use the Electron desktop bridge when present, then the native backend."""
     global _CAPTURE_BRIDGE_BACKOFF_UNTIL
     bridge_error = None
     if platform.system().lower() == "linux" and time.monotonic() >= _CAPTURE_BRIDGE_BACKOFF_UNTIL:
         try:
-            timeout = httpx.Timeout(28.0, connect=1.0)
-            with httpx.Client(timeout=timeout, proxy=None, trust_env=False) as client:
-                response = client.post(f"http://127.0.0.1:{MAIN_SERVER_PORT}/api/capture/computer-use")
+            response = _post_capture_bridge(cancel_event)
             _CAPTURE_BRIDGE_BACKOFF_UNTIL = 0.0
             payload = response.json()
             if response.status_code != 200:
@@ -116,6 +147,8 @@ def _capture_computer_use_frame() -> Image.Image:
                 if image.width < 1 or image.height < 1:
                     raise DesktopCaptureError("renderer returned an empty image")
                 return image.copy()
+        except InterruptedError:
+            raise
         except (httpx.HTTPError, ValueError, OSError, DesktopCaptureError) as exc:
             bridge_error = exc
             if isinstance(exc, httpx.TimeoutException):
@@ -1177,7 +1210,7 @@ class ComputerUseAdapter:
                     return {"success": False, "error": "Task cancelled by user"}
 
                 t0 = time.monotonic()
-                shot = _capture_computer_use_frame()
+                shot = _capture_computer_use_frame(self._cancel_event)
                 if self._cancelled:
                     logger.info("[CUA] Task cancelled after capture at step %d", step)
                     return {"success": False, "error": "Task cancelled by user"}
@@ -1251,6 +1284,8 @@ class ComputerUseAdapter:
                 answer = f"Reached {self.max_steps} steps without completion"
                 success = False
 
+        except InterruptedError:
+            return {"success": False, "error": "Task cancelled by user"}
         except Exception as e:
             logger.error(
                 "[CUA] run_instruction error: %s\n%s", e, traceback.format_exc()

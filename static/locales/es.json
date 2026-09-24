@@ -3191,7 +3191,7 @@
             "freeModelWarning": "Debido a limitaciones de cuota, los modelos gratuitos son propensos a bloquearse en el modo NekoClaw. Se recomienda cambiar a un modelo pago.\n\nSi ya ha configurado una API paga, intente reiniciar NEKO.",
             "freeModelWarningTitle": "Aviso de modelo gratuito",
             "connectivityCheck": "Verificación de conectividad de NekoClaw LLM en progreso...",
-            "screenShareRequired": "Autoriza compartir toda la pantalla antes de activar el control de teclado y ratón de NekoClaw.",
+            "screenShareRequired": "Autorice compartir toda la pantalla antes de activar el control del teclado y el ratón de NekoClaw.",
             "precheckFailed": "Error en la comprobación previa de NekoClaw: {{reason}}",
             "toggleFailed": "Error al alternar el agente: {{error}}"
         },

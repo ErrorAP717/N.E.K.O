@@ -5,6 +5,8 @@ from __future__ import annotations
 import base64
 from io import BytesIO
 from pathlib import Path
+import threading
+import time
 
 import httpx
 import pytest
@@ -93,6 +95,49 @@ def test_computer_use_timeout_temporarily_skips_unresponsive_bridge(monkeypatch)
     assert computer_use._CAPTURE_BRIDGE_BACKOFF_UNTIL > computer_use.time.monotonic()
     assert computer_use._capture_computer_use_frame() is native
     assert calls == ["post"]
+
+
+@pytest.mark.unit
+def test_cancelling_a_stalled_bridge_does_not_wait_for_http_timeout(monkeypatch):
+    entered = threading.Event()
+    release = threading.Event()
+    cancel = threading.Event()
+
+    class _StalledClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def post(self, _url):
+            entered.set()
+            release.wait(timeout=5)
+            return _Response(503, {"error": "no_renderer"})
+
+    monkeypatch.setattr(computer_use.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(computer_use.httpx, "Client", lambda **_kwargs: _StalledClient())
+    monkeypatch.setattr(
+        computer_use,
+        "capture_desktop_screenshot",
+        lambda: pytest.fail("cancelled capture must not start the native fallback"),
+    )
+    monkeypatch.setattr(computer_use, "_CAPTURE_BRIDGE_BACKOFF_UNTIL", 0.0)
+
+    def cancel_after_bridge_starts():
+        assert entered.wait(timeout=2)
+        cancel.set()
+
+    canceller = threading.Thread(target=cancel_after_bridge_starts)
+    canceller.start()
+    started = time.monotonic()
+    try:
+        with pytest.raises(InterruptedError, match="Task cancelled by user"):
+            computer_use._capture_computer_use_frame(cancel)
+        assert time.monotonic() - started < 2
+    finally:
+        release.set()
+        canceller.join(timeout=2)
 
 
 @pytest.mark.unit
