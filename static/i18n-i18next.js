@@ -29,8 +29,8 @@
     const SUPPORTED_LANGUAGES = ['zh-CN', 'zh-TW', 'en', 'ja', 'ko', 'ru', 'es', 'pt'];
 
     // locale 资源版本（用于 cache-busting，避免客户端长期缓存旧语言包导致新增 key 不生效）
-    // 猫爪屏幕重新授权提示新增了 key；递增版本让长期缓存重新拉取完整语言包。
-    const LOCALE_VERSION = '2026-09-24-agent-screen-share-required';
+    // 屏幕授权等待提示新增了 key；递增版本让长期缓存重新拉取完整语言包。
+    const LOCALE_VERSION = '2026-09-24-agent-screen-share-pending-reload';
     function initDecorativeImageDragGuard() {
         const markImage = (img) => {
             if (!(img instanceof HTMLImageElement)) return;
