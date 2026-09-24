@@ -40,6 +40,7 @@ from fastapi.responses import JSONResponse
 from PIL import Image
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError
 from utils import capture_bridge
+from utils.desktop_capture import capture_desktop_screenshot
 from utils.pyautogui_diagnostics import classify_pyautogui_import_error
 from utils.screenshot_utils import (
     compress_screenshot,
@@ -259,7 +260,7 @@ async def backend_screenshot(request: Request):
 
     try:
         def _capture_rgb_screenshot():
-            shot = pyautogui.screenshot()
+            shot = capture_desktop_screenshot()
             if shot.mode in ('RGBA', 'LA', 'P'):
                 shot = shot.convert('RGB')
             return shot

@@ -40,6 +40,7 @@ from utils.pyautogui_diagnostics import (
     classify_pyautogui_import_error,
 )
 from utils.token_tracker import set_call_type
+from utils.desktop_capture import capture_desktop_screenshot
 from utils.screenshot_utils import compress_screenshot
 
 logger = get_module_logger(__name__, "Agent")
@@ -1131,7 +1132,7 @@ class ComputerUseAdapter:
                     return {"success": False, "error": "Task cancelled by user"}
 
                 t0 = time.monotonic()
-                shot = pyautogui.screenshot()
+                shot = capture_desktop_screenshot()
                 # CUA 自己抓屏做 agent 控制，需要更高分辨率读清小字 UI；不随 vision 分析
                 # 一起降到 720p，显式锁定在 1080p（quality 仍走默认）。
                 jpg_bytes = compress_screenshot(shot, target_h=1080)
