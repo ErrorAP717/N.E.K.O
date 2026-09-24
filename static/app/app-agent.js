@@ -1113,6 +1113,14 @@
                     checkbox._processing = true;
                 }
 
+                if (flagKey === 'computer_use_enabled') {
+                    if (isChecked && typeof window.prepareComputerUseCapture === 'function') {
+                        window.prepareComputerUseCapture().catch(() => {});
+                    } else if (!isChecked && typeof window.releaseComputerUseCapture === 'function') {
+                        window.releaseComputerUseCapture();
+                    }
+                }
+
                 try {
                     const enabled = isChecked;
                     if (enabled) {
@@ -1127,6 +1135,10 @@
                         }
 
                         if (!ok) {
+                            if (flagKey === 'computer_use_enabled'
+                                && typeof window.releaseComputerUseCapture === 'function') {
+                                window.releaseComputerUseCapture();
+                            }
                             setFloatingAgentStatus(window.t ? window.t('settings.toggles.unavailable', { name }) : `${name}\u4e0d\u53ef\u7528`);
                             checkbox.checked = false;
                             syncCheckboxUI(checkbox);
@@ -1164,6 +1176,10 @@
                     } catch (e) {
                         if (isExpired()) return;
                         if (enabled) {
+                            if (flagKey === 'computer_use_enabled'
+                                && typeof window.releaseComputerUseCapture === 'function') {
+                                window.releaseComputerUseCapture();
+                            }
                             checkbox.checked = false;
                             syncCheckboxUI(checkbox);
                             setFloatingAgentStatus(window.t ? window.t('settings.toggles.enableFailed', { name }) : `${name}\u5f00\u542f\u5931\u8d25`);

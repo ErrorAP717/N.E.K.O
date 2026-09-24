@@ -35,6 +35,7 @@
     const CAPTURE_BRIDGE_REANNOUNCE_INTERVAL_MS = 250;
     const CAPTURE_BRIDGE_REANNOUNCE_MAX_ATTEMPTS = 40;
     const CAPTURE_BRIDGE_REGION_IMAGE_MAX_CHARS = 9 * 1024 * 1024;
+    const COMPUTER_USE_STREAM_IDLE_MS = 120000;
     const GAME_ROUTE_ENDED_IDENTITY_LIMIT = 8;
     const GAME_ROUTE_ENDED_IDENTITY_TTL_MS = 2 * 60 * 1000;
     let _pendingUserActivityCancelTimer = 0;
@@ -51,6 +52,82 @@
     let _musicPlayUrlCoordBeforeUnloadBound = false;
     let _musicPlayUrlBroadcastUnavailableWarned = false;
     let _jukeboxControlQueue = Promise.resolve();
+    let _computerUseStream = null;
+    let _computerUseStreamPending = null;
+    let _computerUseStreamGeneration = 0;
+    let _computerUseStreamIdleTimer = null;
+
+    function releaseComputerUseCapture() {
+        _computerUseStreamGeneration += 1;
+        if (_computerUseStreamIdleTimer) clearTimeout(_computerUseStreamIdleTimer);
+        _computerUseStreamIdleTimer = null;
+        var stream = _computerUseStream;
+        _computerUseStream = null;
+        if (stream) stream.getTracks().forEach(function (track) { track.stop(); });
+    }
+
+    function refreshComputerUseStreamIdleTimer() {
+        if (_computerUseStreamIdleTimer) clearTimeout(_computerUseStreamIdleTimer);
+        _computerUseStreamIdleTimer = setTimeout(releaseComputerUseCapture, COMPUTER_USE_STREAM_IDLE_MS);
+    }
+
+    // Called synchronously from the user's keyboard-control toggle so Chromium
+    // sees a user gesture. The portal chooser is opened once and the live stream
+    // is reused by later Agent requests.
+    window.prepareComputerUseCapture = function () {
+        var provider = resolveDesktopCaptureProvider();
+        if (!provider || typeof provider.captureComputerUseScreen !== 'function'
+            || !navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia
+            || (window.screen && window.screen.isExtended === true)
+            || (typeof S.selectedScreenSourceId === 'string'
+                && S.selectedScreenSourceId.startsWith('window:'))) {
+            return Promise.resolve(false);
+        }
+        if (_computerUseStream && _computerUseStream.active) return Promise.resolve(true);
+        if (_computerUseStreamPending) return _computerUseStreamPending;
+
+        var generation = _computerUseStreamGeneration;
+        // Invoke getDisplayMedia before any await: transient user activation
+        // would otherwise be lost while querying Electron display metadata.
+        var request;
+        try {
+            request = navigator.mediaDevices.getDisplayMedia({
+                video: { displaySurface: 'monitor', frameRate: { max: 1 } },
+                audio: false
+            });
+        } catch (_) {
+            return Promise.resolve(false);
+        }
+        _computerUseStreamPending = Promise.resolve(request).then(async function (stream) {
+            var track = stream.getVideoTracks()[0];
+            var surface = track && track.getSettings ? track.getSettings().displaySurface : null;
+            var displayCount = null;
+            try {
+                displayCount = typeof provider.getComputerUseDisplayCount === 'function'
+                    ? await provider.getComputerUseDisplayCount() : null;
+            } catch (_) { /* no trusted display mapping */ }
+            if (generation !== _computerUseStreamGeneration || !track
+                || track.readyState !== 'live'
+                || (surface && surface !== 'monitor')
+                || displayCount !== 1) {
+                stream.getTracks().forEach(function (item) { item.stop(); });
+                return false;
+            }
+            _computerUseStream = stream;
+            track.addEventListener('ended', function () {
+                if (_computerUseStream === stream) releaseComputerUseCapture();
+            }, { once: true });
+            refreshComputerUseStreamIdleTimer();
+            return true;
+        }).catch(function () {
+            return false;
+        }).finally(function () {
+            _computerUseStreamPending = null;
+        });
+        return _computerUseStreamPending;
+    };
+    window.releaseComputerUseCapture = releaseComputerUseCapture;
+    window.addEventListener('beforeunload', releaseComputerUseCapture);
     // 「顶替」世代。就地取消只够停住「已经在跑」的那条；还在队列里等着的那条尚未
     // 取到任何取消世代，轮到它时会把此刻的世代当成最新的，于是在用户最后那条指令
     // 之后又响起来——而 play 要等运行时初始化、预检、动画加载，这一响可能是好几秒。
@@ -164,7 +241,8 @@
                     getSources: !!(dc && dc.getSources),
                     captureSourceAsDataUrl: !!(dc && dc.captureSourceAsDataUrl),
                     captureSourceWithoutNeko: !!(dc && dc.captureSourceWithoutNeko),
-                    captureDesktopRegionAsDataUrl: !!(dc && dc.captureDesktopRegionAsDataUrl)
+                    captureDesktopRegionAsDataUrl: !!(dc && dc.captureDesktopRegionAsDataUrl),
+                    captureComputerUseScreen: !!(dc && dc.captureComputerUseScreen)
                 }
             }));
             return available;
@@ -4258,6 +4336,13 @@
                     window._agentStatusSnapshot = snapshot;
                     var serverOnline = snapshot.server_online !== false;
                     var flags = snapshot.flags || {};
+                    var pendingComputerUseToggle = window.agent_ui_v2_state
+                        && window.agent_ui_v2_state.pending
+                        && window.agent_ui_v2_state.pending.has('computer_use_enabled');
+                    if (flags.computer_use_enabled === false && !pendingComputerUseToggle
+                        && _computerUseStream) {
+                        releaseComputerUseCapture();
+                    }
                     if (!('agent_enabled' in flags) && snapshot.analyzer_enabled !== undefined) {
                         flags.agent_enabled = !!snapshot.analyzer_enabled;
                     }
@@ -4413,6 +4498,69 @@
                     } catch (e) {
                         console.warn('[App] 处理 agent_task_update 失败:', e);
                     }
+
+                // -------- capture_bridge_computer_use_request (full desktop) --------
+                } else if (response.type === 'capture_bridge_computer_use_request') {
+                    (async function () {
+                        var responseSocket = _thisSocket;
+                        var requestId = response.request_id || '';
+                        var sendResult = function (payload) {
+                            if (!responseSocket || responseSocket.readyState !== WebSocket.OPEN) return;
+                            payload.action = 'capture_bridge_computer_use_response';
+                            payload.request_id = requestId;
+                            responseSocket.send(JSON.stringify(payload));
+                        };
+                        try {
+                            var dc = resolveDesktopCaptureProvider();
+                            if (!dc || typeof dc.captureComputerUseScreen !== 'function') {
+                                sendResult({ success: false, error: 'unavailable' });
+                                return;
+                            }
+                            // Screen sharing already owns a live, authorised stream.
+                            // Reuse its current frame so a portal chooser is not
+                            // reopened for every ComputerUse step.
+                            var stream = _computerUseStream && _computerUseStream.active
+                                ? _computerUseStream : S.screenCaptureStream;
+                            var videoTrack = stream && stream.getVideoTracks && stream.getVideoTracks()[0];
+                            var surface = videoTrack && videoTrack.getSettings
+                                ? videoTrack.getSettings().displaySurface : null;
+                            var selectedScreen = stream === _computerUseStream
+                                || (typeof S.selectedScreenSourceId === 'string'
+                                    && S.selectedScreenSourceId.startsWith('screen:'));
+                            if (stream && stream.active && videoTrack && videoTrack.readyState === 'live'
+                                && (surface === 'monitor' || (!surface && selectedScreen))
+                                && typeof window.captureFrameFromStream === 'function') {
+                                var displayCount = typeof dc.getComputerUseDisplayCount === 'function'
+                                    ? await dc.getComputerUseDisplayCount() : null;
+                                if (displayCount === 1) {
+                                    var reused = await window.captureFrameFromStream(stream, 0.8, true);
+                                    if (reused && reused.dataUrl) {
+                                        var boundedReused = await boundCaptureBridgeRegionImage(reused.dataUrl);
+                                        if (boundedReused) {
+                                            if (stream === _computerUseStream) refreshComputerUseStreamIdleTimer();
+                                            sendResult({ success: true, image: boundedReused });
+                                            return;
+                                        }
+                                    }
+                                }
+                            }
+                            var frame = await window.invokeDesktopCaptureWithTimeout(
+                                dc, 'captureComputerUseScreen', [], 22000
+                            );
+                            if (!frame || frame.success !== true || !frame.dataUrl) {
+                                sendResult({ success: false, error: frame && frame.error || 'capture_failed' });
+                                return;
+                            }
+                            var boundedFrame = await boundCaptureBridgeRegionImage(frame.dataUrl);
+                            if (!boundedFrame) {
+                                sendResult({ success: false, error: 'image_too_large' });
+                                return;
+                            }
+                            sendResult({ success: true, image: boundedFrame });
+                        } catch (captureError) {
+                            sendResult({ success: false, error: captureError && captureError.code || 'capture_failed' });
+                        }
+                    })();
 
                 // -------- capture_bridge_region_request (interactive desktop selection) --------
                 } else if (response.type === 'capture_bridge_region_request') {

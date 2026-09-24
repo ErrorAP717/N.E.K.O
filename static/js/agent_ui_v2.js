@@ -568,6 +568,13 @@
                         return;
                     }
                     const value = !!e.target.checked;
+                    if (key === 'computer_use_enabled') {
+                        if (value && typeof window.prepareComputerUseCapture === 'function') {
+                            window.prepareComputerUseCapture().catch(() => {});
+                        } else if (!value && typeof window.releaseComputerUseCapture === 'function') {
+                            window.releaseComputerUseCapture();
+                        }
+                    }
                     const opToken = makeSnapshotToken();
                     state.pending.add(key);
                     state.optimistic[key] = value;
@@ -581,6 +588,10 @@
                         console.log('[AgentUIv2Timing]', { phase: 'fetch_snapshot_after_flag', key, ms: Number((performance.now() - ts).toFixed(2)) });
                     } catch (err) {
                         if (!isSnapshotTokenCurrent(opToken)) return;
+                        if (key === 'computer_use_enabled' && value
+                            && typeof window.releaseComputerUseCapture === 'function') {
+                            window.releaseComputerUseCapture();
+                        }
                         state.pending.delete(key);
                         state.optimistic = {};
                         setGlobalBusy(false);
