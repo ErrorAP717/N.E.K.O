@@ -1511,6 +1511,28 @@ async def test_restore_llm_dependent_success_keeps_intent(
 
 
 @pytest.mark.asyncio
+async def test_wayland_restore_requires_fresh_screen_authorization(
+    agent_state_isolation, isolated_intent_store: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from app import agent_runtime_intent as ari
+    from app.agent_server import api_routes as srv_mod
+
+    monkeypatch.setattr(srv_mod.sys, "platform", "linux")
+    monkeypatch.setenv("XDG_SESSION_TYPE", "wayland")
+    ari.set_intent("computer_use_enabled", True)
+    fake_adapter = MagicMock()
+    fake_adapter.check_connectivity = MagicMock(return_value=(True, ""))
+    srv_mod.Modules.computer_use = fake_adapter
+    srv_mod.Modules.analyzer_enabled = True
+
+    await srv_mod._restore_llm_dependent_flags({"computer_use_enabled": True})
+
+    assert srv_mod.Modules.agent_flags["computer_use_enabled"] is False
+    assert json.loads(srv_mod.Modules.notification)["code"] == "AGENT_SCREEN_SHARE_REQUIRED"
+    assert ari.get_intent("computer_use_enabled") is True
+
+
+@pytest.mark.asyncio
 async def test_restore_llm_dependent_module_not_loaded_is_permanent(
     agent_state_isolation, isolated_intent_store: Path, monkeypatch: pytest.MonkeyPatch
 ):
