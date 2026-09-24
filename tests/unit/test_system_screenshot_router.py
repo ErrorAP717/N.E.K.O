@@ -157,6 +157,9 @@ def test_backend_screenshot_returns_safe_macos_pyobjc_reason(monkeypatch):
 @pytest.mark.unit
 def test_backend_screenshot_does_not_expose_raw_import_details(monkeypatch):
     monkeypatch.setattr(system_router_module, "_is_loopback_request", lambda _request: True)
+    # Linux deliberately skips the PyAutoGUI import preflight; exercise the
+    # non-Linux privacy contract regardless of the CI host platform.
+    monkeypatch.setattr(system_router_module.sys, "platform", "darwin")
 
     real_import = builtins.__import__
 
