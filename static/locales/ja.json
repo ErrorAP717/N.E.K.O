@@ -612,6 +612,7 @@
         "RELOAD_PAGE_CHARACTER_SETTINGS": "キャラクター設定が更新されました。ページがまもなく更新されます",
         "RELOAD_PAGE_CLOUDSAVE_CHARACTER": "クラウドセーブのキャラクターが更新されました。ページがまもなく更新されます",
         "AGENT_AUTO_DISABLED_COMPUTER": "キーボード/マウス制御が自動無効化されました: $t(agent.precheck.{{reason_code}})",
+        "AGENT_SCREEN_SHARE_REQUIRED": "$t(agent.status.screenShareRequired)",
         "AGENT_AUTO_DISABLED_BROWSER": "ブラウザ制御が自動無効化されました: $t(agent.precheck.{{reason_code}})",
         "AGENT_LLM_CHECK_ERROR": "ネコクロー LLM 接続チェックエラー",
         "INVALID_INPUT_TYPE": "無効な入力タイプ: {{input_type}}",

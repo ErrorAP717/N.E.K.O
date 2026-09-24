@@ -101,7 +101,7 @@ def test_wayland_agent_never_reopens_portal_for_each_frame():
     request = source.split("response.type === 'capture_bridge_computer_use_request'", 1)[1].split(
         "response.type === 'capture_bridge_region_request'", 1
     )[0]
-    portal_guard = request.index("if (dc.sourceEnumerationMayPrompt === true)")
+    portal_guard = request.index("if (dc.sourceEnumerationMayPrompt === true")
     one_shot = request.index("dc, 'captureComputerUseScreen'")
     assert portal_guard < one_shot
     assert "error: 'SCREEN_STREAM_REQUIRED'" in request
@@ -120,13 +120,24 @@ def test_both_agent_toggles_wait_for_capture_permission_before_enabling():
 def test_reopening_capture_does_not_reuse_invalid_pending_permission():
     source = (ROOT / "static/app/app-websocket.js").read_text(encoding="utf-8")
     release = source.split("function releaseComputerUseCapture()", 1)[1].split(
-        "function refreshComputerUseStreamIdleTimer()", 1
+        "async function captureComputerUseLiveStream(provider)", 1
     )[0]
     prepare = source.split("window.prepareComputerUseCapture = function ()", 1)[1].split(
         "window.releaseComputerUseCapture", 1
     )[0]
     assert "_computerUseStreamPending = null" in release
     assert "if (_computerUseStreamPending === pending) _computerUseStreamPending = null" in prepare
+
+
+@pytest.mark.unit
+def test_computer_use_stream_owner_is_brokered_across_chat_and_pet():
+    source = (ROOT / "static/app/app-websocket.js").read_text(encoding="utf-8")
+    assert "onComputerUseFrameRequest(async function ()" in source
+    assert "setComputerUseStreamOwner(true, ownerToken)" in source
+    assert "setComputerUseStreamOwner(false, _computerUseStreamOwnerToken)" in source
+    assert "dc.computerUseSharedStreamBroker === true" in source
+    assert "dc.computerUseNeedsStream === true" in source
+    assert "COMPUTER_USE_STREAM_IDLE_MS" not in source
 
 
 @pytest.mark.unit

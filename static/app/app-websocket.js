@@ -35,7 +35,6 @@
     const CAPTURE_BRIDGE_REANNOUNCE_INTERVAL_MS = 250;
     const CAPTURE_BRIDGE_REANNOUNCE_MAX_ATTEMPTS = 40;
     const CAPTURE_BRIDGE_REGION_IMAGE_MAX_CHARS = 9 * 1024 * 1024;
-    const COMPUTER_USE_STREAM_IDLE_MS = 120000;
     const GAME_ROUTE_ENDED_IDENTITY_LIMIT = 8;
     const GAME_ROUTE_ENDED_IDENTITY_TTL_MS = 2 * 60 * 1000;
     let _pendingUserActivityCancelTimer = 0;
@@ -55,7 +54,7 @@
     let _computerUseStream = null;
     let _computerUseStreamPending = null;
     let _computerUseStreamGeneration = 0;
-    let _computerUseStreamIdleTimer = null;
+    let _computerUseStreamOwnerToken = null;
     let _computerUseCaptureFailure = '';
     let _agentTaskReconcileTimer = null;
     let _agentTaskReconcileInFlight = false;
@@ -142,16 +141,42 @@
     function releaseComputerUseCapture() {
         _computerUseStreamGeneration += 1;
         _computerUseStreamPending = null;
-        if (_computerUseStreamIdleTimer) clearTimeout(_computerUseStreamIdleTimer);
-        _computerUseStreamIdleTimer = null;
+        var provider = resolveDesktopCaptureProvider();
+        if (provider && _computerUseStreamOwnerToken
+            && typeof provider.setComputerUseStreamOwner === 'function') {
+            provider.setComputerUseStreamOwner(false, _computerUseStreamOwnerToken).catch(function () {});
+        }
+        _computerUseStreamOwnerToken = null;
         var stream = _computerUseStream;
         _computerUseStream = null;
         if (stream) stream.getTracks().forEach(function (track) { track.stop(); });
     }
 
-    function refreshComputerUseStreamIdleTimer() {
-        if (_computerUseStreamIdleTimer) clearTimeout(_computerUseStreamIdleTimer);
-        _computerUseStreamIdleTimer = setTimeout(releaseComputerUseCapture, COMPUTER_USE_STREAM_IDLE_MS);
+    async function captureComputerUseLiveStream(provider) {
+        var stream = _computerUseStream && _computerUseStream.active
+            ? _computerUseStream : S.screenCaptureStream;
+        var videoTrack = stream && stream.getVideoTracks && stream.getVideoTracks()[0];
+        var surface = videoTrack && videoTrack.getSettings
+            ? videoTrack.getSettings().displaySurface : null;
+        var selectedScreen = stream === _computerUseStream
+            || (typeof S.selectedScreenSourceId === 'string'
+                && S.selectedScreenSourceId.startsWith('screen:'));
+        if (!stream || !stream.active || !videoTrack || videoTrack.readyState !== 'live'
+            || (surface !== 'monitor' && (surface || !selectedScreen))
+            || typeof window.captureFrameFromStream !== 'function') return null;
+        var displayCount = typeof provider.getComputerUseDisplayCount === 'function'
+            ? await provider.getComputerUseDisplayCount() : null;
+        if (displayCount !== 1) return null;
+        var frame = await window.captureFrameFromStream(stream, 0.8, true);
+        return frame && frame.dataUrl ? boundCaptureBridgeRegionImage(frame.dataUrl) : null;
+    }
+
+    var computerUseBrokerProvider = resolveDesktopCaptureProvider();
+    if (computerUseBrokerProvider && typeof computerUseBrokerProvider.onComputerUseFrameRequest === 'function') {
+        computerUseBrokerProvider.onComputerUseFrameRequest(async function () {
+            var image = await captureComputerUseLiveStream(computerUseBrokerProvider);
+            return image ? { success: true, dataUrl: image } : { success: false };
+        });
     }
 
     // Called synchronously from the user's keyboard-control toggle so Chromium
@@ -203,12 +228,22 @@
                 stream.getTracks().forEach(function (item) { item.stop(); });
                 return false;
             }
+            if (typeof provider.setComputerUseStreamOwner === 'function') {
+                var ownerToken = String(generation) + ':' + Date.now();
+                var ownership = await provider.setComputerUseStreamOwner(true, ownerToken);
+                if (!ownership || ownership.success !== true || generation !== _computerUseStreamGeneration) {
+                    provider.setComputerUseStreamOwner(false, ownerToken).catch(function () {});
+                    _computerUseCaptureFailure = 'screen_stream_owner_unavailable';
+                    stream.getTracks().forEach(function (item) { item.stop(); });
+                    return false;
+                }
+                _computerUseStreamOwnerToken = ownerToken;
+            }
             _computerUseStream = stream;
             _computerUseCaptureFailure = '';
             track.addEventListener('ended', function () {
                 if (_computerUseStream === stream) releaseComputerUseCapture();
             }, { once: true });
-            refreshComputerUseStreamIdleTimer();
             return true;
         }).catch(function (error) {
             _computerUseCaptureFailure = error && error.name || 'display_media_denied';
@@ -4612,37 +4647,17 @@
                                 sendResult({ success: false, error: 'unavailable' });
                                 return;
                             }
-                            // Screen sharing already owns a live, authorised stream.
-                            // Reuse its current frame so a portal chooser is not
-                            // reopened for every ComputerUse step.
-                            var stream = _computerUseStream && _computerUseStream.active
-                                ? _computerUseStream : S.screenCaptureStream;
-                            var videoTrack = stream && stream.getVideoTracks && stream.getVideoTracks()[0];
-                            var surface = videoTrack && videoTrack.getSettings
-                                ? videoTrack.getSettings().displaySurface : null;
-                            var selectedScreen = stream === _computerUseStream
-                                || (typeof S.selectedScreenSourceId === 'string'
-                                    && S.selectedScreenSourceId.startsWith('screen:'));
-                            if (stream && stream.active && videoTrack && videoTrack.readyState === 'live'
-                                && (surface === 'monitor' || (!surface && selectedScreen))
-                                && typeof window.captureFrameFromStream === 'function') {
-                                var displayCount = typeof dc.getComputerUseDisplayCount === 'function'
-                                    ? await dc.getComputerUseDisplayCount() : null;
-                                if (displayCount === 1) {
-                                    var reused = await window.captureFrameFromStream(stream, 0.8, true);
-                                    if (reused && reused.dataUrl) {
-                                        var boundedReused = await boundCaptureBridgeRegionImage(reused.dataUrl);
-                                        if (boundedReused) {
-                                            if (stream === _computerUseStream) refreshComputerUseStreamIdleTimer();
-                                            sendResult({ success: true, image: boundedReused });
-                                            return;
-                                        }
-                                    }
-                                }
+                            var reused = await captureComputerUseLiveStream(dc);
+                            if (reused) {
+                                sendResult({ success: true, image: reused });
+                                return;
                             }
                             // A Linux source enumeration may reopen the desktop
-                            // portal every step. Never repeat it from Agent tasks.
-                            if (dc.sourceEnumerationMayPrompt === true) {
+                            // portal every step. A broker reads the already-owned
+                            // stream in Chat without enumerating sources.
+                            if (dc.sourceEnumerationMayPrompt === true
+                                && !(dc.computerUseSharedStreamBroker === true
+                                    && dc.computerUseNeedsStream === true)) {
                                 sendResult({ success: false, error: 'SCREEN_STREAM_REQUIRED' });
                                 return;
                             }

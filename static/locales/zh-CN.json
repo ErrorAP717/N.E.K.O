@@ -612,6 +612,7 @@
         "RELOAD_PAGE_CHARACTER_SETTINGS": "角色设定已更新，页面即将刷新",
         "RELOAD_PAGE_CLOUDSAVE_CHARACTER": "云存档角色已更新，页面即将刷新",
         "AGENT_AUTO_DISABLED_COMPUTER": "已自动关闭键鼠控制: $t(agent.precheck.{{reason_code}})",
+        "AGENT_SCREEN_SHARE_REQUIRED": "$t(agent.status.screenShareRequired)",
         "AGENT_AUTO_DISABLED_BROWSER": "已自动关闭浏览器控制: $t(agent.precheck.{{reason_code}})",
         "AGENT_LLM_CHECK_ERROR": "猫爪 LLM 连接检查异常",
         "INVALID_INPUT_TYPE": "无效的输入类型: {{input_type}}",
