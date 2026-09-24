@@ -1522,6 +1522,7 @@ async def test_wayland_restore_requires_fresh_screen_authorization(
     ari.set_intent("computer_use_enabled", True)
     fake_adapter = MagicMock()
     fake_adapter.check_connectivity = MagicMock(return_value=(True, ""))
+    fake_adapter.is_available = MagicMock(return_value={"ready": True, "reasons": []})
     srv_mod.Modules.computer_use = fake_adapter
     srv_mod.Modules.analyzer_enabled = True
 
@@ -1530,6 +1531,29 @@ async def test_wayland_restore_requires_fresh_screen_authorization(
     assert srv_mod.Modules.agent_flags["computer_use_enabled"] is False
     assert json.loads(srv_mod.Modules.notification)["code"] == "AGENT_SCREEN_SHARE_REQUIRED"
     assert ari.get_intent("computer_use_enabled") is True
+
+
+@pytest.mark.asyncio
+async def test_wayland_restore_keeps_unavailable_computer_use_disabled(
+    agent_state_isolation, isolated_intent_store: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from app.agent_server import api_routes as srv_mod
+
+    monkeypatch.setattr(srv_mod.sys, "platform", "linux")
+    monkeypatch.setenv("XDG_SESSION_TYPE", "wayland")
+    fake_adapter = MagicMock()
+    fake_adapter.check_connectivity = MagicMock(return_value=(True, ""))
+    fake_adapter.is_available = MagicMock(return_value={
+        "ready": False, "reasons": ["AGENT_PYAUTOGUI_UNAVAILABLE"]
+    })
+    srv_mod.Modules.computer_use = fake_adapter
+    srv_mod.Modules.analyzer_enabled = True
+
+    await srv_mod._restore_llm_dependent_flags({"computer_use_enabled": True})
+
+    assert srv_mod.Modules.capability_cache["computer_use"]["ready"] is False
+    assert srv_mod.Modules.agent_flags["computer_use_enabled"] is False
+    assert srv_mod.Modules.notification is None
 
 
 @pytest.mark.asyncio

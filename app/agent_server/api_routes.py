@@ -944,7 +944,12 @@ async def _restore_llm_dependent_flags(intent: dict) -> None:
             and (os.environ.get("XDG_SESSION_TYPE") == "wayland" or bool(os.environ.get("WAYLAND_DISPLAY")))
         )
         if intent.get("computer_use_enabled") and needs_screen_reauthorization:
-            Modules.notification = json.dumps({"code": "AGENT_SCREEN_SHARE_REQUIRED"})
+            availability = await asyncio.to_thread(Modules.computer_use.is_available)
+            reasons = availability.get("reasons", []) if isinstance(availability, dict) else []
+            ready = bool(availability.get("ready")) if isinstance(availability, dict) else False
+            _set_capability("computer_use", ready, reasons[0] if reasons else "")
+            if ready:
+                Modules.notification = json.dumps({"code": "AGENT_SCREEN_SHARE_REQUIRED"})
             _bump_state_revision()
             await _emit_agent_status_update()
         elif intent.get("computer_use_enabled"):
