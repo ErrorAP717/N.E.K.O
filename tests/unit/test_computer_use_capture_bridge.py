@@ -6,6 +6,7 @@ import base64
 from io import BytesIO
 from pathlib import Path
 
+import httpx
 import pytest
 from PIL import Image
 
@@ -69,6 +70,32 @@ def test_computer_use_falls_back_when_renderer_is_unavailable(monkeypatch):
 
 
 @pytest.mark.unit
+def test_computer_use_timeout_temporarily_skips_unresponsive_bridge(monkeypatch):
+    native = Image.new("RGB", (16, 12), "blue")
+    calls = []
+
+    class _TimeoutClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def post(self, _url):
+            calls.append("post")
+            raise httpx.ReadTimeout("renderer did not answer")
+
+    monkeypatch.setattr(computer_use.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(computer_use.httpx, "Client", lambda **_kwargs: _TimeoutClient())
+    monkeypatch.setattr(computer_use, "capture_desktop_screenshot", lambda: native)
+    monkeypatch.setattr(computer_use, "_CAPTURE_BRIDGE_BACKOFF_UNTIL", 0.0)
+    assert computer_use._capture_computer_use_frame() is native
+    assert computer_use._CAPTURE_BRIDGE_BACKOFF_UNTIL > computer_use.time.monotonic()
+    assert computer_use._capture_computer_use_frame() is native
+    assert calls == ["post"]
+
+
+@pytest.mark.unit
 def test_wayland_agent_never_reopens_portal_for_each_frame():
     source = (ROOT / "static/app/app-websocket.js").read_text(encoding="utf-8")
     request = source.split("response.type === 'capture_bridge_computer_use_request'", 1)[1].split(
@@ -87,6 +114,19 @@ def test_both_agent_toggles_wait_for_capture_permission_before_enabling():
     assert modern.index("await capturePreparation") < modern.index("await sendCommand('set_flag'")
     legacy_toggle = legacy.split("const capturePreparation = flagKey === 'computer_use_enabled'", 1)[1]
     assert legacy_toggle.index("await capturePreparation") < legacy_toggle.index("fetch('/api/agent/flags'")
+
+
+@pytest.mark.unit
+def test_reopening_capture_does_not_reuse_invalid_pending_permission():
+    source = (ROOT / "static/app/app-websocket.js").read_text(encoding="utf-8")
+    release = source.split("function releaseComputerUseCapture()", 1)[1].split(
+        "function refreshComputerUseStreamIdleTimer()", 1
+    )[0]
+    prepare = source.split("window.prepareComputerUseCapture = function ()", 1)[1].split(
+        "window.releaseComputerUseCapture", 1
+    )[0]
+    assert "_computerUseStreamPending = null" in release
+    assert "if (_computerUseStreamPending === pending) _computerUseStreamPending = null" in prepare
 
 
 @pytest.mark.unit

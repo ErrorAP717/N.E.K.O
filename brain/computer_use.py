@@ -62,6 +62,8 @@ except Exception:
 
 pyautogui = None
 _PYAUTOGUI_IMPORT_ERROR: Optional[Exception] = None
+_CAPTURE_BRIDGE_BACKOFF_UNTIL = 0.0
+_CAPTURE_BRIDGE_BACKOFF_SECONDS = 20.0
 
 
 def _load_pyautogui():
@@ -91,12 +93,14 @@ _load_pyautogui()
 
 def _capture_computer_use_frame() -> Image.Image:
     """Use the Electron desktop bridge when present, then the native backend."""
+    global _CAPTURE_BRIDGE_BACKOFF_UNTIL
     bridge_error = None
-    if platform.system().lower() == "linux":
+    if platform.system().lower() == "linux" and time.monotonic() >= _CAPTURE_BRIDGE_BACKOFF_UNTIL:
         try:
             timeout = httpx.Timeout(28.0, connect=1.0)
             with httpx.Client(timeout=timeout, proxy=None, trust_env=False) as client:
                 response = client.post(f"http://127.0.0.1:{MAIN_SERVER_PORT}/api/capture/computer-use")
+            _CAPTURE_BRIDGE_BACKOFF_UNTIL = 0.0
             payload = response.json()
             if response.status_code != 200:
                 reason = payload.get("error") if isinstance(payload, dict) else None
@@ -114,6 +118,8 @@ def _capture_computer_use_frame() -> Image.Image:
                 return image.copy()
         except (httpx.HTTPError, ValueError, OSError, DesktopCaptureError) as exc:
             bridge_error = exc
+            if isinstance(exc, httpx.TimeoutException):
+                _CAPTURE_BRIDGE_BACKOFF_UNTIL = time.monotonic() + _CAPTURE_BRIDGE_BACKOFF_SECONDS
             logger.info("[CUA] Electron capture unavailable (%s); trying native backend", type(exc).__name__)
 
     try:

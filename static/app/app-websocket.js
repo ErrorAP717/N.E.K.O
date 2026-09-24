@@ -138,6 +138,7 @@
 
     function releaseComputerUseCapture() {
         _computerUseStreamGeneration += 1;
+        _computerUseStreamPending = null;
         if (_computerUseStreamIdleTimer) clearTimeout(_computerUseStreamIdleTimer);
         _computerUseStreamIdleTimer = null;
         var stream = _computerUseStream;
@@ -182,7 +183,7 @@
             _computerUseCaptureFailure = 'display_media_request_failed';
             return Promise.resolve(false);
         }
-        _computerUseStreamPending = Promise.resolve(request).then(async function (stream) {
+        var pending = Promise.resolve(request).then(async function (stream) {
             var track = stream.getVideoTracks()[0];
             var surface = track && track.getSettings ? track.getSettings().displaySurface : null;
             var displayCount = null;
@@ -210,9 +211,10 @@
             _computerUseCaptureFailure = error && error.name || 'display_media_denied';
             return false;
         }).finally(function () {
-            _computerUseStreamPending = null;
+            if (_computerUseStreamPending === pending) _computerUseStreamPending = null;
         });
-        return _computerUseStreamPending;
+        _computerUseStreamPending = pending;
+        return pending;
     };
     window.releaseComputerUseCapture = releaseComputerUseCapture;
     window.addEventListener('beforeunload', releaseComputerUseCapture);
