@@ -587,7 +587,10 @@
                             && typeof window.computerUseNeedsCaptureStream === 'function'
                             && window.computerUseNeedsCaptureStream()) {
                             const ready = capturePreparation && await capturePreparation;
-                            if (!ready) {
+                            const nativeReady = !ready
+                                && typeof window.computerUseNativeCaptureAvailable === 'function'
+                                && await window.computerUseNativeCaptureAvailable();
+                            if (!ready && !nativeReady) {
                                 throw new Error(window.t
                                     ? window.t('agent.status.screenShareRequired')
                                     : 'Share the entire screen before enabling keyboard control');

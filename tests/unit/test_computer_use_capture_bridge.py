@@ -141,6 +141,18 @@ def test_computer_use_stream_owner_is_brokered_across_chat_and_pet():
 
 
 @pytest.mark.unit
+def test_screen_share_chooser_timeout_can_use_native_fallback_without_hanging_toggle():
+    source = (ROOT / "static/app/app-websocket.js").read_text(encoding="utf-8")
+    modern = (ROOT / "static/js/agent_ui_v2.js").read_text(encoding="utf-8")
+    legacy = (ROOT / "static/app/app-agent.js").read_text(encoding="utf-8")
+    assert "requestTimedOut = true" in source
+    assert "stream.getTracks().forEach(function (track) { track.stop(); });" in source
+    assert "window.computerUseNativeCaptureAvailable = async function ()" in source
+    for toggle in (modern, legacy):
+        assert "await window.computerUseNativeCaptureAvailable()" in toggle
+
+
+@pytest.mark.unit
 def test_active_task_cards_reconcile_with_backend_terminal_state():
     source = (ROOT / "static/app/app-websocket.js").read_text(encoding="utf-8")
     reconcile = source.split("function scheduleAgentTaskReconciliation()", 1)[1].split(

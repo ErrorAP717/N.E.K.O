@@ -137,6 +137,20 @@
         return !!(provider && provider.computerUseNeedsStream);
     };
     window.getComputerUseCaptureFailure = function () { return _computerUseCaptureFailure; };
+    window.computerUseNativeCaptureAvailable = async function () {
+        try {
+            var controller = new AbortController();
+            var timer = setTimeout(function () { controller.abort(); }, 1500);
+            try {
+                var response = await fetch('/api/agent/computer-use/native-capture-available', {
+                    cache: 'no-store', signal: controller.signal
+                });
+                if (!response.ok) return false;
+                var body = await response.json();
+                return body && body.success === true && body.available === true;
+            } finally { clearTimeout(timer); }
+        } catch (_) { return false; }
+    };
 
     function releaseComputerUseCapture() {
         _computerUseStreamGeneration += 1;
@@ -211,7 +225,32 @@
             _computerUseCaptureFailure = 'display_media_request_failed';
             return Promise.resolve(false);
         }
-        var pending = Promise.resolve(request).then(async function (stream) {
+        // Chromium may leave getDisplayMedia pending without showing a portal
+        // chooser. Settle the UI, and stop any stream delivered after timeout.
+        var requestTimedOut = false;
+        var boundedRequest = new Promise(function (resolve, reject) {
+            var timer = setTimeout(function () {
+                requestTimedOut = true;
+                resolve(null);
+            }, 5000);
+            Promise.resolve(request).then(function (stream) {
+                if (requestTimedOut) {
+                    stream.getTracks().forEach(function (track) { track.stop(); });
+                    return;
+                }
+                clearTimeout(timer);
+                resolve(stream);
+            }, function (error) {
+                if (requestTimedOut) return;
+                clearTimeout(timer);
+                reject(error);
+            });
+        });
+        var pending = boundedRequest.then(async function (stream) {
+            if (!stream) {
+                _computerUseCaptureFailure = 'display_media_timeout';
+                return false;
+            }
             var track = stream.getVideoTracks()[0];
             var surface = track && track.getSettings ? track.getSettings().displaySurface : null;
             var displayCount = null;

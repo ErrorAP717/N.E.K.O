@@ -1148,7 +1148,10 @@
                             && typeof window.computerUseNeedsCaptureStream === 'function'
                             && window.computerUseNeedsCaptureStream()) {
                             const captureReady = capturePreparation && await capturePreparation;
-                            if (!captureReady || isExpired()) {
+                            const nativeReady = !captureReady
+                                && typeof window.computerUseNativeCaptureAvailable === 'function'
+                                && await window.computerUseNativeCaptureAvailable();
+                            if ((!captureReady && !nativeReady) || isExpired()) {
                                 if (typeof window.releaseComputerUseCapture === 'function') {
                                     window.releaseComputerUseCapture();
                                 }
