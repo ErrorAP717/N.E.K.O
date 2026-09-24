@@ -78,6 +78,32 @@ def test_kde_wayland_prefers_spectacle_even_when_gnome_screenshot_exists():
 
 
 @pytest.mark.unit
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX AppImage PATH is Linux-only")
+def test_wayland_tool_lookup_uses_the_cleaned_host_path(monkeypatch):
+    app_dir = "/tmp/.mount_N.E.K.Oabc"
+    calls: list[dict] = []
+
+    def _which(command, *, path):
+        calls.append({"lookup": command, "path": path})
+        return "/usr/bin/spectacle" if command == "spectacle" else None
+
+    monkeypatch.setattr(desktop_capture.shutil, "which", _which)
+    desktop_capture.capture_desktop_screenshot(
+        env={
+            "APPDIR": app_dir,
+            "XDG_SESSION_TYPE": "wayland",
+            "XDG_CURRENT_DESKTOP": "KDE",
+            "PATH": f"{app_dir}/usr/bin:/usr/bin",
+        },
+        platform_name="linux",
+        run=_successful_capture(calls),
+    )
+
+    assert calls[0] == {"lookup": "spectacle", "path": "/usr/bin"}
+    assert calls[1]["env"]["PATH"] == "/usr/bin"
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize(
     ("desktop", "executables", "expected_prefix"),
     [

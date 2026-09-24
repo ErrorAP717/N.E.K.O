@@ -261,7 +261,7 @@ def capture_desktop_screenshot(
     env: Mapping[str, str] | None = None,
     platform_name: str | None = None,
     timeout: float = DEFAULT_CAPTURE_TIMEOUT_SECONDS,
-    which: Callable[[str], str | None] = shutil.which,
+    which: Callable[[str], str | None] | None = None,
     run: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
 ) -> Image.Image:
     """Capture the current desktop and return a fully loaded PIL image."""
@@ -276,7 +276,11 @@ def capture_desktop_screenshot(
     session_type = str(capture_env.get("XDG_SESSION_TYPE", "")).strip().lower()
     is_wayland = session_type == "wayland" or bool(capture_env.get("WAYLAND_DISPLAY"))
     if is_wayland:
-        backend, command_prefix = _wayland_helper(capture_env, which=which)
+        system_env = build_system_tool_env(capture_env)
+        lookup = which or (lambda command: shutil.which(
+            command, path=system_env.get("PATH", os.defpath)
+        ))
+        backend, command_prefix = _wayland_helper(capture_env, which=lookup)
         return _capture_with_system_tool(
             backend,
             command_prefix,
