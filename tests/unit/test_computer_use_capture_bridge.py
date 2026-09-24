@@ -138,7 +138,7 @@ def test_active_task_cards_reconcile_with_backend_terminal_state():
     assert "fetch('/api/agent/tasks', { cache: 'no-store' })" in reconcile
     assert "['completed', 'failed', 'cancelled']" in reconcile
     assert "terminal_at: terminalAt" in reconcile
-    assert "taskMap !== window._agentTaskMap" in reconcile
+    assert "taskMap = window._agentTaskMap" in reconcile
 
 
 @pytest.mark.unit

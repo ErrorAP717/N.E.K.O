@@ -81,7 +81,10 @@
                 if (!result.ok) return;
                 var body = await result.json();
                 if (!body || !Array.isArray(body.tasks)) return;
-                if (taskMap !== window._agentTaskMap) return;
+                // A WebSocket status snapshot may replace the map while the
+                // HTTP request is in flight. Reconcile the current map only.
+                taskMap = window._agentTaskMap;
+                if (!taskMap) return;
                 var serverTasks = new Map(body.tasks.filter(function (task) {
                     return task && task.id;
                 }).map(function (task) { return [task.id, task]; }));
