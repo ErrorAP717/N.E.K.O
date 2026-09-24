@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 
 from PIL import Image
 import pytest
@@ -30,6 +31,7 @@ def _successful_capture(calls: list[dict]):
 
 
 @pytest.mark.unit
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX PATH and AppImage paths are Linux-only")
 def test_kde_wayland_prefers_spectacle_even_when_gnome_screenshot_exists():
     calls: list[dict] = []
     app_dir = "/tmp/.mount_N.E.K.Oabc"
