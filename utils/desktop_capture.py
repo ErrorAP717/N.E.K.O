@@ -197,6 +197,32 @@ def _wayland_helper(
     raise DesktopCaptureError("no supported Wayland screenshot helper is installed")
 
 
+def native_wayland_capture_available(
+    *,
+    env: Mapping[str, str] | None = None,
+    which: Callable[[str], str | None] | None = None,
+) -> bool:
+    """Whether this host has a supported Wayland screenshot fallback.
+
+    This is a cheap preflight, not a guarantee that a later capture succeeds.
+    ComputerUse reports the actual screenshot error if the helper fails.
+    """
+
+    capture_env = dict(os.environ if env is None else env)
+    if not (capture_env.get("XDG_SESSION_TYPE", "").strip().lower() == "wayland"
+            or capture_env.get("WAYLAND_DISPLAY")):
+        return False
+    system_env = build_system_tool_env(capture_env)
+    lookup = which or (lambda command: shutil.which(
+        command, path=system_env.get("PATH", os.defpath)
+    ))
+    try:
+        _wayland_helper(capture_env, which=lookup)
+    except DesktopCaptureError:
+        return False
+    return True
+
+
 def _capture_with_system_tool(
     backend: str,
     command_prefix: Sequence[str],

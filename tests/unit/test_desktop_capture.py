@@ -31,6 +31,19 @@ def _successful_capture(calls: list[dict]):
 
 
 @pytest.mark.unit
+def test_native_wayland_capture_preflight_uses_desktop_helper_without_taking_screenshot():
+    env = {"XDG_SESSION_TYPE": "wayland", "XDG_CURRENT_DESKTOP": "KDE", "PATH": "/usr/bin"}
+    assert desktop_capture.native_wayland_capture_available(
+        env=env, which=lambda name: "/usr/bin/spectacle" if name == "spectacle" else None
+    )
+    assert not desktop_capture.native_wayland_capture_available(env=env, which=lambda _name: None)
+    assert not desktop_capture.native_wayland_capture_available(
+        env={"XDG_SESSION_TYPE": "x11", "XDG_CURRENT_DESKTOP": "KDE"},
+        which=lambda _name: "/usr/bin/spectacle",
+    )
+
+
+@pytest.mark.unit
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX PATH and AppImage paths are Linux-only")
 def test_kde_wayland_prefers_spectacle_even_when_gnome_screenshot_exists():
     calls: list[dict] = []
