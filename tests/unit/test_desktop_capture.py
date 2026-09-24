@@ -1,11 +1,23 @@
 from __future__ import annotations
 
+import os
 import subprocess
 
 from PIL import Image
 import pytest
 
 from utils import desktop_capture
+
+
+@pytest.mark.unit
+def test_source_interpreter_directory_is_not_a_private_runtime_root(monkeypatch, tmp_path):
+    interpreter = tmp_path / "python3"
+    monkeypatch.setattr(desktop_capture.sys, "executable", str(interpreter))
+    monkeypatch.delattr(desktop_capture.sys, "frozen", raising=False)
+
+    roots = desktop_capture._runtime_roots({})
+
+    assert os.path.dirname(str(interpreter)) not in roots
 
 
 def _successful_capture(calls: list[dict]):

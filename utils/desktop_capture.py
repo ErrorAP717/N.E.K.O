@@ -72,7 +72,8 @@ def _runtime_roots(env: Mapping[str, str]) -> tuple[str, ...]:
         roots.append(app_dir)
 
     executable = str(getattr(sys, "executable", "") or "")
-    if executable and os.path.isabs(executable):
+    is_frozen = bool(getattr(sys, "frozen", False)) or "__compiled__" in globals()
+    if is_frozen and executable and os.path.isabs(executable):
         roots.append(os.path.dirname(executable))
 
     meipass = str(getattr(sys, "_MEIPASS", "") or "")
