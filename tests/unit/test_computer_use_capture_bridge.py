@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import base64
 from io import BytesIO
+from pathlib import Path
 
 import pytest
 from PIL import Image
 
 from brain import computer_use
+
+
+ROOT = Path(__file__).resolve().parents[2]
 
 
 class _Response:
@@ -62,3 +66,45 @@ def test_computer_use_falls_back_when_renderer_is_unavailable(monkeypatch):
     )
     monkeypatch.setattr(computer_use, "capture_desktop_screenshot", lambda: native)
     assert computer_use._capture_computer_use_frame() is native
+
+
+@pytest.mark.unit
+def test_wayland_agent_never_reopens_portal_for_each_frame():
+    source = (ROOT / "static/app/app-websocket.js").read_text(encoding="utf-8")
+    request = source.split("response.type === 'capture_bridge_computer_use_request'", 1)[1].split(
+        "response.type === 'capture_bridge_region_request'", 1
+    )[0]
+    portal_guard = request.index("if (dc.sourceEnumerationMayPrompt === true)")
+    one_shot = request.index("dc, 'captureComputerUseScreen'")
+    assert portal_guard < one_shot
+    assert "error: 'SCREEN_STREAM_REQUIRED'" in request
+
+
+@pytest.mark.unit
+def test_both_agent_toggles_wait_for_capture_permission_before_enabling():
+    modern = (ROOT / "static/js/agent_ui_v2.js").read_text(encoding="utf-8")
+    legacy = (ROOT / "static/app/app-agent.js").read_text(encoding="utf-8")
+    assert modern.index("await capturePreparation") < modern.index("await sendCommand('set_flag'")
+    legacy_toggle = legacy.split("const capturePreparation = flagKey === 'computer_use_enabled'", 1)[1]
+    assert legacy_toggle.index("await capturePreparation") < legacy_toggle.index("fetch('/api/agent/flags'")
+
+
+@pytest.mark.unit
+def test_active_task_cards_reconcile_with_backend_terminal_state():
+    source = (ROOT / "static/app/app-websocket.js").read_text(encoding="utf-8")
+    reconcile = source.split("function scheduleAgentTaskReconciliation()", 1)[1].split(
+        "window.computerUseNeedsCaptureStream", 1
+    )[0]
+    assert "fetch('/api/agent/tasks', { cache: 'no-store' })" in reconcile
+    assert "['completed', 'failed', 'cancelled']" in reconcile
+    assert "terminal_at: terminalAt" in reconcile
+    assert "taskMap !== window._agentTaskMap" in reconcile
+
+
+@pytest.mark.unit
+def test_screen_share_required_message_exists_in_every_locale():
+    import json
+
+    for locale in ("en", "ja", "ko", "zh-CN", "zh-TW", "ru", "pt", "es"):
+        data = json.loads((ROOT / f"static/locales/{locale}.json").read_text(encoding="utf-8"))
+        assert data["agent"]["status"]["screenShareRequired"]

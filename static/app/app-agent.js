@@ -1113,12 +1113,12 @@
                     checkbox._processing = true;
                 }
 
-                if (flagKey === 'computer_use_enabled') {
-                    if (isChecked && typeof window.prepareComputerUseCapture === 'function') {
-                        window.prepareComputerUseCapture().catch(() => {});
-                    } else if (!isChecked && typeof window.releaseComputerUseCapture === 'function') {
-                        window.releaseComputerUseCapture();
-                    }
+                const capturePreparation = flagKey === 'computer_use_enabled' && isChecked
+                    && typeof window.prepareComputerUseCapture === 'function'
+                    ? window.prepareComputerUseCapture() : null;
+                if (flagKey === 'computer_use_enabled' && !isChecked
+                    && typeof window.releaseComputerUseCapture === 'function') {
+                    window.releaseComputerUseCapture();
                 }
 
                 try {
@@ -1143,6 +1143,22 @@
                             checkbox.checked = false;
                             syncCheckboxUI(checkbox);
                             return;
+                        }
+                        if (flagKey === 'computer_use_enabled'
+                            && typeof window.computerUseNeedsCaptureStream === 'function'
+                            && window.computerUseNeedsCaptureStream()) {
+                            const captureReady = capturePreparation && await capturePreparation;
+                            if (!captureReady || isExpired()) {
+                                if (typeof window.releaseComputerUseCapture === 'function') {
+                                    window.releaseComputerUseCapture();
+                                }
+                                checkbox.checked = false;
+                                syncCheckboxUI(checkbox);
+                                setFloatingAgentStatus(window.t
+                                    ? window.t('agent.status.screenShareRequired')
+                                    : 'Share the entire screen before enabling keyboard control');
+                                return;
+                            }
                         }
                     }
 

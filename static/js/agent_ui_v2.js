@@ -568,12 +568,14 @@
                         return;
                     }
                     const value = !!e.target.checked;
-                    if (key === 'computer_use_enabled') {
-                        if (value && typeof window.prepareComputerUseCapture === 'function') {
-                            window.prepareComputerUseCapture().catch(() => {});
-                        } else if (!value && typeof window.releaseComputerUseCapture === 'function') {
-                            window.releaseComputerUseCapture();
-                        }
+                    // Start getDisplayMedia in this user gesture. Its result is
+                    // checked before the Agent flag is enabled on Wayland.
+                    const capturePreparation = key === 'computer_use_enabled' && value
+                        && typeof window.prepareComputerUseCapture === 'function'
+                        ? window.prepareComputerUseCapture() : null;
+                    if (key === 'computer_use_enabled' && !value
+                        && typeof window.releaseComputerUseCapture === 'function') {
+                        window.releaseComputerUseCapture();
                     }
                     const opToken = makeSnapshotToken();
                     state.pending.add(key);
@@ -581,6 +583,16 @@
                     setGlobalBusy(true, window.t ? window.t('settings.toggles.checking') : '已接受操作，切换中...');
                     render('command');
                     try {
+                        if (key === 'computer_use_enabled' && value
+                            && typeof window.computerUseNeedsCaptureStream === 'function'
+                            && window.computerUseNeedsCaptureStream()) {
+                            const ready = capturePreparation && await capturePreparation;
+                            if (!ready) {
+                                throw new Error(window.t
+                                    ? window.t('agent.status.screenShareRequired')
+                                    : 'Share the entire screen before enabling keyboard control');
+                            }
+                        }
                         await sendCommand('set_flag', { key, value });
                         if (!isSnapshotTokenCurrent(opToken)) return;
                         const ts = performance.now();

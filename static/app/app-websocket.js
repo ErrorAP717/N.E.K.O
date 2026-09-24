@@ -56,6 +56,85 @@
     let _computerUseStreamPending = null;
     let _computerUseStreamGeneration = 0;
     let _computerUseStreamIdleTimer = null;
+    let _computerUseCaptureFailure = '';
+    let _agentTaskReconcileTimer = null;
+    let _agentTaskReconcileInFlight = false;
+
+    function scheduleAgentTaskReconciliation() {
+        if (_agentTaskReconcileTimer || !window._agentTaskMap) return;
+        if (!Array.from(window._agentTaskMap.values()).some(function (task) {
+            return task.status === 'running' || task.status === 'queued';
+        })) return;
+        _agentTaskReconcileTimer = setInterval(async function () {
+            var taskMap = window._agentTaskMap;
+            if (!taskMap || !Array.from(taskMap.values()).some(function (task) {
+                return task.status === 'running' || task.status === 'queued';
+            })) {
+                clearInterval(_agentTaskReconcileTimer);
+                _agentTaskReconcileTimer = null;
+                return;
+            }
+            if (_agentTaskReconcileInFlight) return;
+            _agentTaskReconcileInFlight = true;
+            try {
+                var result = await fetch('/api/agent/tasks', { cache: 'no-store' });
+                if (!result.ok) return;
+                var body = await result.json();
+                if (!body || !Array.isArray(body.tasks)) return;
+                if (taskMap !== window._agentTaskMap) return;
+                var serverTasks = new Map(body.tasks.filter(function (task) {
+                    return task && task.id;
+                }).map(function (task) { return [task.id, task]; }));
+                var changed = false;
+                taskMap.forEach(function (task, id) {
+                    if (task.status !== 'running' && task.status !== 'queued') return;
+                    var current = serverTasks.get(id);
+                    if (!current || ['completed', 'failed', 'cancelled'].indexOf(current.status) === -1) return;
+                    var terminalAt = Date.now();
+                    taskMap.set(id, Object.assign({}, task, current, { terminal_at: terminalAt }));
+                    changed = true;
+                    if (!window._agentTaskRemoveTimers) window._agentTaskRemoveTimers = new Map();
+                    if (window._agentTaskRemoveTimers.has(id)) clearTimeout(window._agentTaskRemoveTimers.get(id));
+                    window._agentTaskRemoveTimers.set(id, setTimeout(function () {
+                        if (window._agentTaskMap.get(id)?.terminal_at === terminalAt) {
+                            window._agentTaskMap.delete(id);
+                            if (window.AgentHUD && typeof window.AgentHUD.updateAgentTaskHUD === 'function') {
+                                var remaining = Array.from(window._agentTaskMap.values());
+                                window.AgentHUD.updateAgentTaskHUD({
+                                    success: true, tasks: remaining, total_count: remaining.length,
+                                    running_count: remaining.filter(function (item) { return item.status === 'running'; }).length,
+                                    queued_count: remaining.filter(function (item) { return item.status === 'queued'; }).length,
+                                    completed_count: remaining.filter(function (item) { return item.status === 'completed'; }).length,
+                                    failed_count: remaining.filter(function (item) { return item.status === 'failed'; }).length,
+                                    timestamp: new Date().toISOString()
+                                });
+                            }
+                            if (typeof window.checkAndToggleTaskHUD === 'function') window.checkAndToggleTaskHUD();
+                        }
+                        window._agentTaskRemoveTimers.delete(id);
+                    }, 10000));
+                });
+                if (changed && window.AgentHUD && typeof window.AgentHUD.updateAgentTaskHUD === 'function') {
+                    var tasks = Array.from(taskMap.values());
+                    window.AgentHUD.updateAgentTaskHUD({
+                        success: true, tasks: tasks, total_count: tasks.length,
+                        running_count: tasks.filter(function (task) { return task.status === 'running'; }).length,
+                        queued_count: tasks.filter(function (task) { return task.status === 'queued'; }).length,
+                        completed_count: tasks.filter(function (task) { return task.status === 'completed'; }).length,
+                        failed_count: tasks.filter(function (task) { return task.status === 'failed'; }).length,
+                        timestamp: new Date().toISOString()
+                    });
+                }
+            } catch (_) { /* WebSocket remains primary; retry on the next tick. */ }
+            finally { _agentTaskReconcileInFlight = false; }
+        }, 5000);
+    }
+
+    window.computerUseNeedsCaptureStream = function () {
+        var provider = resolveDesktopCaptureProvider();
+        return !!(provider && provider.computerUseNeedsStream);
+    };
+    window.getComputerUseCaptureFailure = function () { return _computerUseCaptureFailure; };
 
     function releaseComputerUseCapture() {
         _computerUseStreamGeneration += 1;
@@ -81,9 +160,13 @@
             || (window.screen && window.screen.isExtended === true)
             || (typeof S.selectedScreenSourceId === 'string'
                 && S.selectedScreenSourceId.startsWith('window:'))) {
+            _computerUseCaptureFailure = 'capture_unavailable_or_window_selected';
             return Promise.resolve(false);
         }
-        if (_computerUseStream && _computerUseStream.active) return Promise.resolve(true);
+        if (_computerUseStream && _computerUseStream.active) {
+            _computerUseCaptureFailure = '';
+            return Promise.resolve(true);
+        }
         if (_computerUseStreamPending) return _computerUseStreamPending;
 
         var generation = _computerUseStreamGeneration;
@@ -96,6 +179,7 @@
                 audio: false
             });
         } catch (_) {
+            _computerUseCaptureFailure = 'display_media_request_failed';
             return Promise.resolve(false);
         }
         _computerUseStreamPending = Promise.resolve(request).then(async function (stream) {
@@ -110,16 +194,20 @@
                 || track.readyState !== 'live'
                 || (surface && surface !== 'monitor')
                 || displayCount !== 1) {
+                _computerUseCaptureFailure = displayCount !== 1
+                    ? 'single_display_required' : 'monitor_stream_unavailable';
                 stream.getTracks().forEach(function (item) { item.stop(); });
                 return false;
             }
             _computerUseStream = stream;
+            _computerUseCaptureFailure = '';
             track.addEventListener('ended', function () {
                 if (_computerUseStream === stream) releaseComputerUseCapture();
             }, { once: true });
             refreshComputerUseStreamIdleTimer();
             return true;
-        }).catch(function () {
+        }).catch(function (error) {
+            _computerUseCaptureFailure = error && error.name || 'display_media_denied';
             return false;
         }).finally(function () {
             _computerUseStreamPending = null;
@@ -2610,6 +2698,7 @@
                         : activeTasks;
                     window._agentTaskMap = new Map();
                     filteredTasks.forEach(function (t) { if (t && t.id) window._agentTaskMap.set(t.id, t); });
+                    scheduleAgentTaskReconciliation();
                     var tasks = Array.from(window._agentTaskMap.values());
                     var hasRunning = tasks.some(function (t) { return t.status === 'running' || t.status === 'queued'; });
                     if (tasks.length > 0 && window.AgentHUD && typeof window.AgentHUD.updateAgentTaskHUD === 'function') {
@@ -4380,6 +4469,7 @@
                             }
                         });
                         window._agentTaskMap = newMap;
+                        scheduleAgentTaskReconciliation();
                         var tasks2 = Array.from(window._agentTaskMap.values());
                         if (tasks2.length > 0) {
                             if (window.AgentHUD && typeof window.AgentHUD.updateAgentTaskHUD === 'function') {
@@ -4466,6 +4556,7 @@
                             }
                         }
                         var tasks3 = Array.from(window._agentTaskMap.values());
+                        scheduleAgentTaskReconciliation();
                         var hasRunning2 = tasks3.some(function (t) { return t.status === 'running' || t.status === 'queued'; });
                         if (tasks3.length > 0 && window.AgentHUD) {
                             if (typeof window.AgentHUD.showAgentTaskHUD === 'function') {
@@ -4543,6 +4634,12 @@
                                         }
                                     }
                                 }
+                            }
+                            // A Linux source enumeration may reopen the desktop
+                            // portal every step. Never repeat it from Agent tasks.
+                            if (dc.sourceEnumerationMayPrompt === true) {
+                                sendResult({ success: false, error: 'SCREEN_STREAM_REQUIRED' });
+                                return;
                             }
                             var frame = await window.invokeDesktopCaptureWithTimeout(
                                 dc, 'captureComputerUseScreen', [], 22000

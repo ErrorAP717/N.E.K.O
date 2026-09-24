@@ -3190,6 +3190,7 @@
             "freeModelWarning": "クォータの制限により、無料モデルではネコクローモードがブロックされやすくなります。有料モデルへの切り替えをお勧めします。\n\nすでに有料APIを設定済みの場合は、NEKOを再起動してみてください。",
             "freeModelWarningTitle": "無料モデルのお知らせ",
             "connectivityCheck": "ネコクロー LLM 接続チェック中...",
+            "screenShareRequired": "ネコクローのキーボード・マウス操作を有効にする前に、画面全体の共有を許可してください。",
             "precheckFailed": "ネコクローのプリチェックに失敗しました：{{reason}}",
             "toggleFailed": "Agentの切り替えに失敗しました: {{error}}"
         },

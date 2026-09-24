@@ -3190,6 +3190,7 @@
             "freeModelWarning": "由于限额问题，免费模型使用猫爪模式容易阻塞，建议您切换至自费模型。\n\n如果您已经配置好自费API，请尝试重启NEKO。",
             "freeModelWarningTitle": "免费模型提示",
             "connectivityCheck": "猫爪 LLM 连接检查中...",
+            "screenShareRequired": "请先授权共享整个屏幕，再开启猫爪键鼠控制。",
             "precheckFailed": "猫爪预检失败：{{reason}}",
             "toggleFailed": "Agent切换失败: {{error}}"
         },

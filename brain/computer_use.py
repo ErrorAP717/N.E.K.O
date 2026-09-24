@@ -1172,6 +1172,9 @@ class ComputerUseAdapter:
 
                 t0 = time.monotonic()
                 shot = _capture_computer_use_frame()
+                if self._cancelled:
+                    logger.info("[CUA] Task cancelled after capture at step %d", step)
+                    return {"success": False, "error": "Task cancelled by user"}
                 # CUA 自己抓屏做 agent 控制，需要更高分辨率读清小字 UI；不随 vision 分析
                 # 一起降到 720p，显式锁定在 1080p（quality 仍走默认）。
                 jpg_bytes = compress_screenshot(shot, target_h=1080)
