@@ -3192,6 +3192,7 @@
             "freeModelWarningTitle": "免費模型提示",
             "connectivityCheck": "貓爪 LLM 連接檢查中...",
             "screenShareRequired": "開啟貓爪鍵鼠控制前，請先授權分享整個螢幕。",
+            "screenSharePendingReload": "螢幕擷取授權要求仍在等待，請重新整理頁面後再試。",
             "precheckFailed": "貓爪預檢失敗：{{reason}}",
             "toggleFailed": "Agent切換失敗: {{error}}"
         },

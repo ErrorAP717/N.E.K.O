@@ -92,13 +92,26 @@ _load_pyautogui()
 
 
 def _post_capture_bridge(cancel_event: threading.Event | None) -> httpx.Response:
+    active_client: list[httpx.Client] = []
+    client_lock = threading.Lock()
+
     def post() -> httpx.Response:
         timeout = httpx.Timeout(28.0, connect=1.0)
         with httpx.Client(timeout=timeout, proxy=None, trust_env=False) as client:
-            return client.post(f"http://127.0.0.1:{MAIN_SERVER_PORT}/api/capture/computer-use")
+            with client_lock:
+                active_client.append(client)
+            try:
+                if cancel_event is not None and cancel_event.is_set():
+                    raise InterruptedError("Task cancelled by user")
+                return client.post(f"http://127.0.0.1:{MAIN_SERVER_PORT}/api/capture/computer-use")
+            finally:
+                with client_lock:
+                    active_client.clear()
 
     if cancel_event is None:
         return post()
+    if cancel_event.is_set():
+        raise InterruptedError("Task cancelled by user")
 
     result: dict[str, Any] = {}
     finished = threading.Event()
@@ -116,6 +129,10 @@ def _post_capture_bridge(cancel_event: threading.Event | None) -> httpx.Response
     threading.Thread(target=run_post, daemon=True).start()
     while not finished.wait(0.05):
         if cancel_event.is_set():
+            with client_lock:
+                client = active_client[0] if active_client else None
+            if client is not None:
+                client.close()
             raise InterruptedError("Task cancelled by user")
     if cancel_event.is_set():
         raise InterruptedError("Task cancelled by user")

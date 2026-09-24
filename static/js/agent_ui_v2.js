@@ -591,9 +591,17 @@
                                 && typeof window.computerUseNativeCaptureAvailable === 'function'
                                 && await window.computerUseNativeCaptureAvailable();
                             if (!ready && !nativeReady) {
+                                const captureFailure = typeof window.getComputerUseCaptureFailure === 'function'
+                                    ? window.getComputerUseCaptureFailure() : '';
+                                const portalPending = captureFailure === 'display_media_pending'
+                                    || captureFailure === 'display_media_timeout';
                                 throw new Error(window.t
-                                    ? window.t('agent.status.screenShareRequired')
-                                    : 'Share the entire screen before enabling keyboard control');
+                                    ? window.t(portalPending
+                                        ? 'agent.status.screenSharePendingReload'
+                                        : 'agent.status.screenShareRequired')
+                                    : portalPending
+                                        ? 'Screen capture is still pending. Reload the page and try again.'
+                                        : 'Share the entire screen before enabling keyboard control');
                             }
                         }
                         // A character switch can complete while capture permission

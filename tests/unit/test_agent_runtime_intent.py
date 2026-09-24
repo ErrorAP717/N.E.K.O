@@ -536,6 +536,8 @@ def agent_state_isolation(monkeypatch: pytest.MonkeyPatch):
     backup_capability = {
         k: dict(v) for k, v in srv.Modules.capability_cache.items()
     }
+    backup_notification = srv.Modules.notification
+    srv.Modules.notification = None
 
     async def _noop_async(*args, **kwargs):
         return None
@@ -574,6 +576,7 @@ def agent_state_isolation(monkeypatch: pytest.MonkeyPatch):
     srv.Modules.agent_flags = backup_agent_flags
     srv.Modules.user_plugin_lifecycle_seq = backup_user_plugin_lifecycle_seq
     srv.Modules.capability_cache = backup_capability
+    srv.Modules.notification = backup_notification
 
 
 @pytest.mark.asyncio

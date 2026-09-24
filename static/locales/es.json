@@ -3192,6 +3192,7 @@
             "freeModelWarningTitle": "Aviso de modelo gratuito",
             "connectivityCheck": "Verificación de conectividad de NekoClaw LLM en progreso...",
             "screenShareRequired": "Autorice compartir toda la pantalla antes de activar el control del teclado y el ratón de NekoClaw.",
+            "screenSharePendingReload": "La solicitud de permiso para capturar la pantalla sigue pendiente. Recargue la página e inténtelo de nuevo.",
             "precheckFailed": "Error en la comprobación previa de NekoClaw: {{reason}}",
             "toggleFailed": "Error al alternar el agente: {{error}}"
         },

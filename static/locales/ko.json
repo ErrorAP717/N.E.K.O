@@ -3192,6 +3192,7 @@
             "freeModelWarningTitle": "무료 모델 안내",
             "connectivityCheck": "네코클로 LLM 연결 확인 중...",
             "screenShareRequired": "네코클로 키보드 및 마우스 제어를 켜려면 전체 화면 공유를 허용해 주세요.",
+            "screenSharePendingReload": "화면 캡처 권한 요청이 아직 대기 중입니다. 페이지를 새로고침한 뒤 다시 시도해 주세요.",
             "precheckFailed": "네코클로 사전 검사 실패: {{reason}}",
             "toggleFailed": "Agent 전환 실패: {{error}}"
         },

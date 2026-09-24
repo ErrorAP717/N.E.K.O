@@ -230,6 +230,34 @@ def test_computer_use_capture_requires_renderer_and_rejects_browser_origin(monke
 
 
 @pytest.mark.unit
+@pytest.mark.asyncio
+async def test_computer_use_capture_releases_bridge_when_client_disconnects(monkeypatch):
+    started = asyncio.Event()
+    cancelled = asyncio.Event()
+
+    async def stalled_capture():
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.set()
+
+    class DisconnectedRequest:
+        client = SimpleNamespace(host="127.0.0.1")
+        headers = {}
+
+        async def is_disconnected(self):
+            await started.wait()
+            return True
+
+    monkeypatch.setattr(capture_router_module.capture_bridge, "has_computer_use_capture_client", lambda: True)
+    monkeypatch.setattr(capture_router_module.capture_bridge, "request_computer_use_screenshot", stalled_capture)
+    response = await capture_router_module.capture_computer_use_screen(DisconnectedRequest())
+    assert response.status_code == 499
+    assert cancelled.is_set()
+
+
+@pytest.mark.unit
 def test_screenshot_validates_pid_negative():
     _register_dummy_renderer()
     with _build_client() as client:

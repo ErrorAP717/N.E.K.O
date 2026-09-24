@@ -3192,6 +3192,7 @@
             "freeModelWarningTitle": "Free Model Notice",
             "connectivityCheck": "NekoClaw LLM connectivity check in progress...",
             "screenShareRequired": "Share your entire screen before turning on NekoClaw keyboard and mouse control.",
+            "screenSharePendingReload": "Screen capture is still waiting for authorization. Reload this page and try again.",
             "precheckFailed": "NekoClaw precheck failed: {{reason}}",
             "toggleFailed": "Agent toggle failed: {{error}}"
         },

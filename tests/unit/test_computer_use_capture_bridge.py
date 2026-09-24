@@ -101,6 +101,7 @@ def test_computer_use_timeout_temporarily_skips_unresponsive_bridge(monkeypatch)
 def test_cancelling_a_stalled_bridge_does_not_wait_for_http_timeout(monkeypatch):
     entered = threading.Event()
     release = threading.Event()
+    closed = threading.Event()
     cancel = threading.Event()
 
     class _StalledClient:
@@ -114,6 +115,10 @@ def test_cancelling_a_stalled_bridge_does_not_wait_for_http_timeout(monkeypatch)
             entered.set()
             release.wait(timeout=5)
             return _Response(503, {"error": "no_renderer"})
+
+        def close(self):
+            closed.set()
+            release.set()
 
     monkeypatch.setattr(computer_use.platform, "system", lambda: "Linux")
     monkeypatch.setattr(computer_use.httpx, "Client", lambda **_kwargs: _StalledClient())
@@ -135,6 +140,7 @@ def test_cancelling_a_stalled_bridge_does_not_wait_for_http_timeout(monkeypatch)
         with pytest.raises(InterruptedError, match="Task cancelled by user"):
             computer_use._capture_computer_use_frame(cancel)
         assert time.monotonic() - started < 2
+        assert closed.is_set()
     finally:
         release.set()
         canceller.join(timeout=2)

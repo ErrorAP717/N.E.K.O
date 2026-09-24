@@ -1158,9 +1158,17 @@
                                 }
                                 checkbox.checked = false;
                                 syncCheckboxUI(checkbox);
+                                const captureFailure = typeof window.getComputerUseCaptureFailure === 'function'
+                                    ? window.getComputerUseCaptureFailure() : '';
+                                const portalPending = captureFailure === 'display_media_pending'
+                                    || captureFailure === 'display_media_timeout';
                                 setFloatingAgentStatus(window.t
-                                    ? window.t('agent.status.screenShareRequired')
-                                    : 'Share the entire screen before enabling keyboard control');
+                                    ? window.t(portalPending
+                                        ? 'agent.status.screenSharePendingReload'
+                                        : 'agent.status.screenShareRequired')
+                                    : portalPending
+                                        ? 'Screen capture is still pending. Reload the page and try again.'
+                                        : 'Share the entire screen before enabling keyboard control');
                                 return;
                             }
                         }
