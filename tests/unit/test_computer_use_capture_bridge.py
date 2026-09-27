@@ -98,6 +98,32 @@ def test_computer_use_timeout_temporarily_skips_unresponsive_bridge(monkeypatch)
 
 
 @pytest.mark.unit
+def test_bridge_timeout_response_also_backs_off(monkeypatch):
+    # The server-side bridge wait (25s) ends before the HTTP read timeout
+    # (28s), so a stalled renderer reaches ComputerUse as a 504 response.
+    native = Image.new("RGB", (16, 12), "blue")
+    calls = []
+
+    class _GatewayTimeoutClient(_Client):
+        def post(self, url):
+            calls.append("post")
+            return super().post(url)
+
+    monkeypatch.setattr(computer_use.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(
+        computer_use.httpx, "Client",
+        lambda **_kwargs: _GatewayTimeoutClient(
+            _Response(504, {"success": False, "error": "renderer response timeout"})
+        ),
+    )
+    monkeypatch.setattr(computer_use, "capture_desktop_screenshot", lambda: native)
+    monkeypatch.setattr(computer_use, "_CAPTURE_BRIDGE_BACKOFF_UNTIL", 0.0)
+    assert computer_use._capture_computer_use_frame() is native
+    assert computer_use._capture_computer_use_frame() is native
+    assert calls == ["post"]
+
+
+@pytest.mark.unit
 def test_cancelling_a_stalled_bridge_does_not_wait_for_http_timeout(monkeypatch):
     entered = threading.Event()
     release = threading.Event()

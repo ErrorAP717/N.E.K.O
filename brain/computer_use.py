@@ -149,6 +149,10 @@ def _capture_computer_use_frame(cancel_event: threading.Event | None = None) -> 
         try:
             response = _post_capture_bridge(cancel_event)
             _CAPTURE_BRIDGE_BACKOFF_UNTIL = 0.0
+            if response.status_code == 504:
+                # The bridge gives up (25s) before this client's read timeout
+                # (28s), so a stalled renderer normally surfaces here.
+                _CAPTURE_BRIDGE_BACKOFF_UNTIL = time.monotonic() + _CAPTURE_BRIDGE_BACKOFF_SECONDS
             payload = response.json()
             if response.status_code != 200:
                 reason = payload.get("error") if isinstance(payload, dict) else None
