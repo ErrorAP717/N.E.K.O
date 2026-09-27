@@ -139,3 +139,24 @@ test('a failed display lookup yields no reusable frame instead of throwing', asy
   const provider = { getComputerUseDisplayCount: async () => { throw new Error('IPC gone'); } };
   assert.equal(await captureComputerUseLiveStream(provider), null);
 });
+
+test('a failed frame read yields no reusable frame for the fallback', async () => {
+  const liveStart = source.indexOf('async function captureComputerUseLiveStream(provider)');
+  const liveEnd = source.indexOf('var computerUseBrokerProvider', liveStart);
+  assert.ok(liveStart >= 0 && liveEnd > liveStart);
+
+  const stream = makeStream(() => {});
+  const _computerUseStream = stream;
+  const S = {};
+  const boundCaptureBridgeRegionImage = async (dataUrl) => dataUrl;
+  const provider = { getComputerUseDisplayCount: async () => 1 };
+
+  for (const captureFrameFromStream of [
+    async () => null,
+    async () => { throw new Error('frame unavailable'); },
+  ]) {
+    const window = { captureFrameFromStream };
+    eval(source.slice(liveStart, liveEnd));
+    assert.equal(await captureComputerUseLiveStream(provider), null);
+  }
+});
