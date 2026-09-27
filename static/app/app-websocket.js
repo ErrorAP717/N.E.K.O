@@ -221,7 +221,14 @@
     // is reused by later Agent requests.
     window.prepareComputerUseCapture = function () {
         var provider = resolveDesktopCaptureProvider();
-        if (!provider || typeof provider.captureComputerUseScreen !== 'function'
+        // Only a Wayland desktop needs the authorised stream. Elsewhere the
+        // backend captures natively, so a screen-share prompt (or macOS
+        // screen-recording indicator) would be pure cost.
+        if (!provider || provider.computerUseNeedsStream !== true) {
+            _computerUseCaptureFailure = '';
+            return Promise.resolve(false);
+        }
+        if (typeof provider.captureComputerUseScreen !== 'function'
             || !navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia
             || (window.screen && window.screen.isExtended === true)
             || (typeof S.selectedScreenSourceId === 'string'

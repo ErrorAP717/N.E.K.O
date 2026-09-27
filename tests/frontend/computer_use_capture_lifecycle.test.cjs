@@ -11,7 +11,11 @@ const end = source.indexOf('window.releaseComputerUseCapture = releaseComputerUs
 assert.ok(start >= 0 && end > start);
 const prepareSource = source.slice(start, end);
 
-function makeHarness(getDisplayMedia, owner = async () => ({ success: true })) {
+function makeHarness(
+  getDisplayMedia,
+  owner = async () => ({ success: true }),
+  { needsStream = true } = {},
+) {
   let _computerUseStream = null;
   let _computerUseStreamPending = null;
   let _computerUseDisplayRequestPending = null;
@@ -23,6 +27,7 @@ function makeHarness(getDisplayMedia, owner = async () => ({ success: true })) {
   const navigator = { mediaDevices: { getDisplayMedia } };
   const S = { selectedScreenSourceId: 'screen:1' };
   const provider = {
+    computerUseNeedsStream: needsStream,
     captureComputerUseScreen() {},
     getComputerUseDisplayCount: async () => 1,
     setComputerUseStreamOwner: owner,
@@ -69,6 +74,18 @@ test('a timed out portal request blocks overlapping permission prompts', async (
   assert.equal(stopped, 1);
   window.prepareComputerUseCapture();
   assert.equal(requests, 2);
+});
+
+test('non-Wayland desktops never request a screen-share stream', async () => {
+  let requests = 0;
+  const { window } = makeHarness(
+    () => { requests += 1; return Promise.resolve(makeStream(() => {})); },
+    undefined,
+    { needsStream: false },
+  );
+
+  assert.equal(await window.prepareComputerUseCapture(), false);
+  assert.equal(requests, 0);
 });
 
 test('ownership rejection stops the acquired screen stream', async () => {
