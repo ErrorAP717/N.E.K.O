@@ -201,11 +201,17 @@
         if (!stream || !stream.active || !videoTrack || videoTrack.readyState !== 'live'
             || (surface !== 'monitor' && (surface || !selectedScreen))
             || typeof window.captureFrameFromStream !== 'function') return null;
-        var displayCount = typeof provider.getComputerUseDisplayCount === 'function'
-            ? await provider.getComputerUseDisplayCount() : null;
-        if (displayCount !== 1) return null;
-        var frame = await window.captureFrameFromStream(stream, 0.8, true);
-        return frame && frame.dataUrl ? boundCaptureBridgeRegionImage(frame.dataUrl) : null;
+        // A failed display lookup or frame read means "no reusable frame", so
+        // callers still reach their fallback instead of reporting a hard error.
+        try {
+            var displayCount = typeof provider.getComputerUseDisplayCount === 'function'
+                ? await provider.getComputerUseDisplayCount() : null;
+            if (displayCount !== 1) return null;
+            var frame = await window.captureFrameFromStream(stream, 0.8, true);
+            return frame && frame.dataUrl ? await boundCaptureBridgeRegionImage(frame.dataUrl) : null;
+        } catch (_) {
+            return null;
+        }
     }
 
     var computerUseBrokerProvider = resolveDesktopCaptureProvider();

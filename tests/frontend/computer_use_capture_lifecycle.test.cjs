@@ -123,3 +123,19 @@ test('successful task polling retires a task missing from the server twice', asy
   await tick();
   assert.equal(window._agentTaskMap.has('task-1'), false);
 });
+
+test('a failed display lookup yields no reusable frame instead of throwing', async () => {
+  const liveStart = source.indexOf('async function captureComputerUseLiveStream(provider)');
+  const liveEnd = source.indexOf('var computerUseBrokerProvider', liveStart);
+  assert.ok(liveStart >= 0 && liveEnd > liveStart);
+
+  const stream = makeStream(() => {});
+  const _computerUseStream = stream;
+  const S = {};
+  const window = { captureFrameFromStream: async () => ({ dataUrl: 'data:image/png;base64,AA==' }) };
+  const boundCaptureBridgeRegionImage = async (dataUrl) => dataUrl;
+  eval(source.slice(liveStart, liveEnd));
+
+  const provider = { getComputerUseDisplayCount: async () => { throw new Error('IPC gone'); } };
+  assert.equal(await captureComputerUseLiveStream(provider), null);
+});
